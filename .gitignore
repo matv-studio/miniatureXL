@@ -1,0 +1,14 @@
+# build output
+*.zip
+MiniatureXL_*.zip
+
+# Iris writes the player's in-game option values next to the pack
+*.zip.txt
+*.txt.bak
+
+# editors / OS
+.DS_Store
+.vscode/
+.idea/
+__pycache__/
+*.pyc
