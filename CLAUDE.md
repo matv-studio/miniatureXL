@@ -1,6 +1,6 @@
 # Maintenance notes
 
-Context for anyone — human or model — picking this pack up without the original development conversation. Everything below was established by reading Iris source, Iris documentation or other shaderpacks, or by a failure observed in game. Treat it as load-bearing: several of these cost multiple debugging rounds.
+Context for anyone — human or model — picking this pack up without the original development conversation. `DEVLOG.md` is the companion: every problem this fork hit, its real cause and its fix, including the dead ends. Everything below was established by reading Iris source, Iris documentation or other shaderpacks, or by a failure observed in game. Treat it as load-bearing: several of these cost multiple debugging rounds.
 
 ## Ground rules
 

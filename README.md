@@ -49,6 +49,10 @@ python3 check.py               # -v to list every variant
 
 It catches syntax errors, undeclared identifiers and varying mismatches before a Minecraft launch. It cannot catch linking, uniform binding or runtime behaviour.
 
+## For maintainers
+
+`CLAUDE.md` holds the Iris constraints, the colored-light architecture and the rules that changes must respect. `DEVLOG.md` holds the history: every bug, its actual cause, and the approaches that were tried and rejected.
+
 ## Credits
 
 Original shader © 2022 Mateus A. Kreuch, MIT. See `LICENSE` for the full text and the list of modifications.
