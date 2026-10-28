@@ -8,6 +8,7 @@ Context for anyone — human or model — picking this pack up without the origi
 - **Verify, do not assume.** Iris behaviour is frequently undocumented and occasionally counter-intuitive. Read the Iris source or docs, or reproduce in game, before asserting a cause. Several "obvious" diagnoses in this pack's history were wrong, and each one cost a round trip.
 - **The user's settings file wins.** Iris writes in-game option values to `<packname>.zip.txt` beside the pack. Changing a default in `shader.h` does nothing for an option the user has already touched. When a shipped default changes, say so explicitly.
 - **A full pack reload is required** for any change to take effect — reselecting the pack in the shader menu, not just a resource reload.
+- **Every change goes to `matv-studio/miniatureXL`.** Commit and push each modification of the pack to this repository (branch `main`) as soon as it passes `check.py`. Never leave work only in a session's filesystem — it has been lost once (see `DEVLOG.md` §9).
 
 ## Iris constraints discovered the hard way
 

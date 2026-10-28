@@ -4,6 +4,28 @@ A fork of [Miniature Shader](https://github.com/MateusKreuch/miniature-shader) 2
 
 Built and tested against **Minecraft 1.21.11 / Iris 1.10.7**. Other versions are untested.
 
+Also available on [Modrinth](https://modrinth.com/shader/miniaturexl).
+
+![Sunrise](docs/images/sunrise.jpg)
+
+## Screenshots
+
+### Colored light
+
+| | |
+|:-:|:-:|
+| ![Orange colored light](docs/images/orange.jpg) | ![Blue colored light](docs/images/blue.jpg) |
+| Orange | Blue |
+| ![Green colored light](docs/images/green.jpg) | ![Purple colored light](docs/images/purple.jpg) |
+| Green | Purple |
+
+### Time of day
+
+| | |
+|:-:|:-:|
+| ![Day](docs/images/day.jpg) | ![Night](docs/images/night.jpg) |
+| Day | Night |
+
 ## Installing
 
 Download or clone this repository, zip the contents (`shaders/` and `LICENSE` must be at the archive root, not inside an extra folder), and drop the zip into `.minecraft/shaderpacks`.
@@ -56,3 +78,5 @@ It catches syntax errors, undeclared identifiers and varying mismatches before a
 ## Credits
 
 Original shader © 2022 Mateus A. Kreuch, MIT. See `LICENSE` for the full text and the list of modifications.
+
+Screenshots are from the [Modrinth gallery](https://modrinth.com/shader/miniaturexl/gallery).

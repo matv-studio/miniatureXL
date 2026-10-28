@@ -248,6 +248,8 @@ The GitHub API answers `sessions are bound to their configured repositories` —
 
 **Two conclusions worth keeping**: commit early rather than relying on a session's filesystem, and start sessions that will touch this pack **from the repository**, which avoids the whole problem.
 
+**Resolved later**: a subsequent session attached the repository to itself (`add_repo` with push access) and pushed the archived history unchanged, plus the README screenshots taken from the Modrinth gallery (`docs/images/`, converted from PNG to JPEG to keep the clone small). From then on every change is pushed to `main`.
+
 ---
 
 ## 10. Where things stood at the last in-game test
