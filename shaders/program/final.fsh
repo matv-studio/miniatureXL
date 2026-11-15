@@ -160,7 +160,8 @@ void main() {
       // faces of light sources and glowing materials
       vec3 core = vec3(0.0);
       float coreDepth = texture2D(depthtex0, texUV).x;
-      float portalFace = 0.0; // colortex2.a < 0: nether portal (translucent.fsh)
+      float portalFace = 0.0; // colortex2.a -1: nether portal (translucent.fsh)
+      float beamFace = 0.0;   // colortex2.a -2: beacon beam (beaconbeam.fsh)
 
       if (coreDepth < 1.0) {
          // same near-field cap as the blur pass: distant/depthless geometry
@@ -169,7 +170,8 @@ void main() {
 
          core = coreSample.rgb
               * (1.0 - pow2(rescale(length(screen2view(texUV, coreDepth)), 96.0, 144.0)));
-         portalFace = coreSample.a < -0.5 ? 1.0 : 0.0;
+         portalFace = (coreSample.a < -0.5 && coreSample.a > -1.5) ? 1.0 : 0.0;
+         beamFace = coreSample.a < -1.5 ? 1.0 : 0.0;
       }
 
       float ownGlow = smoothe(rescale(luma(core), 0.02, 0.2));
@@ -223,9 +225,11 @@ void main() {
       // clusters, end rods, whole copper bulbs)
       // except on the nether portal: there the halo IS the look - it fills
       // the portal and blends its glow into one soft violet blob
-      glow *= 1.0 - mix(BLOOM_SOURCE_HALO_CUT * ownGlow, PORTAL_SOURCE_HALO_CUT, portalFace);
+      // the beacon beam keeps most of it too: it IS a beam of light
+      glow *= 1.0 - mix(mix(BLOOM_SOURCE_HALO_CUT * ownGlow, PORTAL_SOURCE_HALO_CUT, portalFace),
+                        BEAM_SOURCE_HALO_CUT, beamFace);
 
-      glow += core * mix(BLOOM_CORE, PORTAL_CORE, portalFace);
+      glow += core * mix(mix(BLOOM_CORE, PORTAL_CORE, portalFace), BEAM_CORE, beamFace);
 
       glow = clamp(glow * BLOOM_STRENGTH, 0.0, 1.0);
 

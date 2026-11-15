@@ -308,3 +308,15 @@ Glow ink sign text (§ `CLAUDE.md` on block-entity text), calibrated sculk senso
 
 `check.py` caught one real error that a read-through missed: `WAVING_ACTIVE` is defined *inside* `common/waving.glsl`, so a declaration block placed before that include did not see it, and the Nether/End variants without colored light failed to compile. Run it before every push.
 
+### 11.8 The beacon beam lost its glow
+
+**Reported** after 1.2: "the beacon beam glow was removed".
+
+**Cause**: `beaconbeam.fsh` never changed, but `final.fsh` had (1.1): 80% of the halo is cut on a source's own glowing pixels and its own glow only counts at 0.4. On a beam a few pixels wide, emitting `0.6 x color`, almost nothing was left — darker stained-glass beams least of all.
+
+**Second cause, found by the user**: the beam only failed to glow when the beacon was deep underground and the beam rose to the surface. The beam is ONE quad from the beacon to the top of the world, and the glow distance cap (96 → 144 blocks) was computed per **vertex**: both ends hundreds of blocks away, so the interpolated distance read "too far" even where the beam passed right in front of the player. This was most likely why the beam looked glowless from the start.
+
+**Fix**: the distance cap is measured per fragment (`max(1 / gl_FragCoord.w, length(view position))`). The beam glows on its texture's lightness with the nether portal's logic — a near-linear curve (power 2.2) over the texture's own range: darkest streaks ~6%, bulk ~64%, lightest ~118% (two earlier passes, 75–130% then 55–100%, read as "over the top" and then "so strong it looks uniform"), in its own hue at full brightness (every glass color glows as strongly), adds into colortex2 (`blend.gbuffers_beaconbeam.colortex2=ONE ONE ONE ZERO`) and marks itself with `colortex2.a = -2` so `final.fsh` keeps part of the halo over it (`BEAM_SOURCE_HALO_CUT` 0.5, `BEAM_CORE` 1.0, the portal's values). Scaled by the *Glowstone, lamps* slider.
+
+**Rule**: any distance cap on geometry that can span hundreds of blocks in one primitive (beams) must be computed per fragment, not per vertex.
+

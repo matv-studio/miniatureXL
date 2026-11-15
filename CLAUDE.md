@@ -16,7 +16,7 @@ Context for anyone — human or model — picking this pack up without the origi
 
 **A block belongs to exactly one `block.properties` group.** Entries apply top to bottom and a later group overwrites an earlier one as if the first never existed. Copper lanterns were in the copper reflectivity group (`20008`) *and* the colored-light group (`10218`); the reflectivity group won, so placed lanterns reached the voxelizer with an unknown id and emitted the default warm color while the held item — routed through `item.properties`, no conflict — was correctly green. Redstone ore had the same conflict with the glowing-ores group (`10014`), resolved by giving it id `10220` and extending the `isOre` test. `check.py` asserts uniqueness.
 
-**Iris skips a dimension's shadow pass if nothing samples the shadow map there.** The Nether and End cast no shadows, so without a sampler the pass never runs and the voxelizer is starved. The workaround is an invisible tap in `program/textured_lit.fsh` for non-Overworld dimensions:
+**Iris skips a dimension's shadow pass if nothing samples the shadow map there.** The Nether and End cast no shadows, so without a sampler the pass never runs and the voxelizer is starved. The workaround is an invisible tap in `program/textured_lit.fsh` wherever no shadow map is read (`!ENABLE_SHADOWS`: the Nether, the End, and the Overworld with shadows off — before 1.2 it was gated on `!OVERWORLD` and missed that last case):
 
 ```glsl
 albedo.rgb += texture2D(shadowcolor0, vec2(0.5)).rgb * 1.0e-6;
@@ -38,7 +38,7 @@ The contribution cannot be optimized away, so the sampler stays live and the pas
 
 **Block-entity text is drawn by `gbuffers_block_translucent`**, which falls back to `gbuffers_block` then `gbuffers_terrain` (`ProgramId`). Sign text therefore reaches `textured_lit` with `GBUFFERS_TERRAIN` defined, no mid-block data and a font page bound (`atlasSize == 0`); glowing text is drawn fullbright. That is how glow ink text is recognized.
 
-**`colortex2.a` and `shadowcolor0.a` carry flags.** `colortex2.a < 0` marks the nether portal for `final.fsh` (translucents write colortex2 with `ONE ZERO`, so the value arrives intact). `shadowcolor0.a` is the occluder's shadow strength (entity shadow fade); nothing else reads either channel.
+**`colortex2.a` and `shadowcolor0.a` carry flags.** In `colortex2.a`, `-1` marks the nether portal and `-2` the beacon beam for `final.fsh`, which keeps their halo on their own surface (translucents write colortex2 with `ONE ZERO`, the beam with `ONE ONE ONE ZERO`, so the value arrives intact). `shadowcolor0.a` is the occluder's shadow strength (entity shadow fade); nothing else reads either channel.
 
 **`#elif` in `shaders.properties` is unverified.** Nested `#if` / `#else` / `#endif` is known to work and is what the file uses. Parenthesized boolean expressions and `defined X` do work.
 
@@ -82,6 +82,9 @@ Do not re-propose these; they were implemented, tested in game and rolled back a
 - **A `depthtex1` rule for Voxy LODs seen through tinted glass**: made things worse. The working fix is the per-buffer blend override `blend.gbuffers_water.colortex2=ONE ZERO ONE ZERO`, which has translucents purge the glow buffer.
 - **A "Lava glow" slider**: had no measurable effect because saturated lava luma sits below the glow cutoff, so there was nothing to scale. Removed to avoid settings bloat; the fixed `bloomLevelCap` of 0.4 stays.
 - **Legacy inner/middle/outer torch color sliders**: superseded by the per-block palette, removed.
+- **An even violet blob for the nether portal** (flat glow level, single color): "the opposite of what I want". The portal follows Photon's model instead (`DEVLOG.md` §11.3).
+- **Sun shafts kept as "rays only" when Sun & moon glow is off** (shafts only where the path is partly blocked): very noisy over Voxy terrain with 12 dithered taps; a clean version needs extra blur passes. Off now means no shafts.
+- **The lightness-rank mask on amethyst clusters and buds**: rolled back to the original light-facet model.
 
 ## Known limitations
 

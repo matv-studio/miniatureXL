@@ -77,6 +77,11 @@
 // portal's own per-texel glow (BLOOM_CORE elsewhere: 0.4)
 #define PORTAL_SOURCE_HALO_CUT 0.5
 #define PORTAL_CORE 1.0
+// beacon beam: halo removed over the beam itself and weight of its own glow
+// - the nether portal's values: the halo still spreads around the beam,
+// its streaks stay readable on it
+#define BEAM_SOURCE_HALO_CUT 0.5
+#define BEAM_CORE 1.0
 // nether portal, after Photon (gbuffers_all_translucent.fsh): self-lit, its
 // texels weighted by a "density" from their luminance (linear 0 -> 0.6,
 // floor 0.23) for brightness AND opacity - the dark body dim and
