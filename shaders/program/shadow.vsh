@@ -6,16 +6,12 @@ attribute vec4 mc_Entity;
 
 varying vec2 texUV;
 varying float alpha;
+varying float occluderOpacity; // shadow strength of this occluder (shadow.fsh -> shadowcolor0.a)
 
 #ifdef COLORED_LIGHT_ACTIVE
-   attribute vec4 at_midBlock;
-
-   uniform mat4 shadowModelViewInverse;
-   uniform vec3 cameraPosition;
    uniform int entityId;
    uniform int blockEntityId;
    uniform int currentRenderedItemId;
-   uniform int renderStage;
 
    #ifdef CL_LAVA_TEXTURE
       uniform sampler2D gtexture;
@@ -37,18 +33,20 @@ varying float alpha;
 #include "/common/getShadowDistortion.glsl"
 #include "/common/waving.glsl"
 
+// shared by the voxelizer, the waving offset and the entity shadow fade.
+// AFTER waving.glsl: WAVING_ACTIVE is defined in there
+#if defined COLORED_LIGHT_ACTIVE || defined WAVING_ACTIVE || defined ENABLE_SHADOWS
+   attribute vec4 at_midBlock;
+
+   uniform mat4 shadowModelViewInverse;
+   uniform vec3 cameraPosition;
+   uniform int renderStage;
+#endif
+
+
 #ifdef WAVING_ACTIVE
    uniform float frameTimeCounter;
    uniform float rainStrength;
-
-   #ifndef COLORED_LIGHT_ACTIVE
-      uniform mat4 shadowModelViewInverse;
-      uniform vec3 cameraPosition;
-
-      #ifdef IRIS_FEATURE_BLOCK_EMISSION_ATTRIBUTE
-         attribute vec4 at_midBlock;
-      #endif
-   #endif
 #endif
 
 void main() {
@@ -82,7 +80,41 @@ void main() {
    gl_Position.xyz = getShadowDistortion(gl_Position.xyz);
 
    texUV = (gl_TextureMatrix[0] * gl_MultiTexCoord0).st;
-   alpha = mc_Entity.x == 10072.0 ? 0.0 : gl_Color.a;
+   alpha = (mc_Entity.x == 10072.0 || mc_Entity.x == 10260.0) ? 0.0 : gl_Color.a; // fire, soul fire
+
+   // entity shadow fade-in: Iris drops entities and block entities from the
+   // shadow pass beyond a box of shadowDistance x entityShadowDistanceMul
+   // around the camera (ShadowRenderer: BoxCuller), so their shadows popped
+   // in. they fade out over the last 20% of that box instead: their opacity
+   // goes to shadowcolor0.a (shadow.fsh) and the receivers scale their shadow
+   // by it (getLightStrength.fsh). entities are what has no mid-block data
+   // outside the terrain stages - Iris sets no render stage for entities in
+   // the shadow pass, so they cannot be named directly
+   occluderOpacity = 1.0;
+
+   #ifdef ENABLE_SHADOWS
+      if (entityShadowDistanceMul < 1.0) {
+         bool hasMidBlock = dot(at_midBlock.xyz, at_midBlock.xyz) > 1.0
+                         && all(lessThan(abs(at_midBlock.xyz), vec3(40.0)));
+
+         #ifdef MC_RENDER_STAGE_TERRAIN_SOLID
+            bool isTerrain = renderStage == MC_RENDER_STAGE_TERRAIN_SOLID
+                          || renderStage == MC_RENDER_STAGE_TERRAIN_CUTOUT
+                          || renderStage == MC_RENDER_STAGE_TERRAIN_CUTOUT_MIPPED
+                          || renderStage == MC_RENDER_STAGE_TERRAIN_TRANSLUCENT;
+         #else
+            bool isTerrain = false;
+         #endif
+
+         if (!hasMidBlock && !isTerrain) {
+            vec3 fromCamera = (shadowModelViewInverse * (gl_ModelViewMatrix * gl_Vertex)).xyz;
+            float boxDistance = max(abs(fromCamera.x), max(abs(fromCamera.y), abs(fromCamera.z)));
+            float entityRange = shadowDistance * entityShadowDistanceMul;
+
+            occluderOpacity = 1.0 - clamp((boxDistance - 0.75 * entityRange) / (0.2 * entityRange), 0.0, 1.0);
+         }
+      }
+   #endif
 
    #ifdef COLORED_LIGHT_ACTIVE
       vec3 worldPos = (shadowModelViewInverse * (gl_ModelViewMatrix * gl_Vertex)).xyz + cameraPosition;
@@ -232,5 +264,15 @@ void main() {
             imageStore(voxelData, ivec3(cell), vec4(getLightPaletteColor(lightId) * lightLevel, 0.0));
          }
       }
+
+      #ifndef ENABLE_SHADOWS
+         // no shadow map is ever read here (Nether, End, or Overworld with
+         // shadows off): this pass exists only for the voxel writes above,
+         // done in the vertex stage. send every primitive outside the clip
+         // volume (z > w) so nothing is rasterized: no shadow-map fill, no
+         // fragment work - at shadowMapResolution 1024 that was a full
+         // depth+color render of the world around the player per frame
+         gl_Position = vec4(0.0, 0.0, 2.0, 1.0);
+      #endif
    #endif
 }

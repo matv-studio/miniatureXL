@@ -30,11 +30,21 @@
 #define BLOOM_HALO_SIZE 1.0    //[0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
 #define BLOOM_QUALITY 1        //[0 1 2]
 #define BLOOM_SATURATION 1.4   //[0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0]
-#define BLOOM_SKY
+// Sun & moon glow: the bloom halo around the sun/moon AND the sun shafts
+// (in open sky they are one wide glow around the sun). off: neither. a
+// "rays only" variant (shafts kept where the path is partly blocked) was
+// tried: its 12 dithered taps made it very noisy over Voxy LOD terrain, and
+// a clean version needs extra blur passes - so off means no shafts at all
+// (the old "Sky glow" toggle, BLOOM_SKY, only drove the bloom halo, which
+// the much wider shaft glow hid: switching it seemed to do nothing)
+#define SUN_GLOW
 #define BLOOM_EMISSIVE_TEXTURES
 #define BLOOM_PARTICLES
 #define ENCHANT_GLOW 0.0       //[0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
-#define BLOOM_PIXEL_THRESHOLD 0.5 //[0.3 0.35 0.4 0.45 0.5 0.55 0.6 0.65 0.7 0.75 0.8 0.85 0.9]
+// luma cutoff of the glow of light sources WITHOUT an emissive model: only
+// held items and modded emitters now (every vanilla category has a mask).
+// was the "Glow pixel cutoff" setting - fixed, no longer in the menu
+#define BLOOM_PIXEL_THRESHOLD 0.5
 #define BLOOM_HIGHLIGHTS 0.55   //[0.0 0.05 0.1 0.15 0.2 0.25 0.3 0.35 0.4 0.45 0.5 0.55 0.6 0.65 0.7 0.75 0.8 0.85 0.9 0.95 1.0]
 // per-category glow strength (Glow > Glow per block). 0 turns that
 // category's glow off; it scales the glow only, never the block's own
@@ -56,10 +66,35 @@
 #define GLOW_MISC 1.0          //[0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
 #define GLOW_OTHER 1.0         //[0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
 #define GLOW_MOBS 1.0          //[0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
+// lightness-ranked glow (nether portal, copper bulbs): the lightest texels
+// of the texture glow 100%, the others by their lightness rank raised to
+// this power - higher = more contrast between light and dark texels
+#define GLOW_CONTRAST 1.5      //[1.0 1.25 1.5 1.75 2.0 2.5 3.0]
+// nether portal surface: share of the halo removed over the WHOLE portal
+// (not only on its glowing texels: the halo is a blur, flat across a big
+// portal, and it washed out the contrast between dark body and light
+// streaks). the halo still spreads around the frame. and the weight of the
+// portal's own per-texel glow (BLOOM_CORE elsewhere: 0.4)
+#define PORTAL_SOURCE_HALO_CUT 0.5
+#define PORTAL_CORE 1.0
+// nether portal, after Photon (gbuffers_all_translucent.fsh): self-lit, its
+// texels weighted by a "density" from their luminance (linear 0 -> 0.6,
+// floor 0.23) for brightness AND opacity - the dark body dim and
+// see-through, the light swirl bright (HDR) and opaque. Photon's x4 over 20
+// parallax layers averages ~x2 (PORTAL_BRIGHTNESS). no parallax here
+#define PORTAL_BRIGHTNESS 2.0
+// overall portal opacity on top of that (1.0 = Photon-like)
+#define PORTAL_OPACITY 1.0     //[0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
+// warped and crimson stems: glow of the plain (static) veins relative to
+// the lighter, animated pulse running through them (100%)
+#define NETHER_VEIN_BASE 0.55  //[0.3 0.4 0.45 0.5 0.55 0.6 0.65 0.7 0.8]
+// calibrated sculk sensor: crystal glow at rest (firing = 100%)
+#define SCULK_CRYSTAL_IDLE 0.2 //[0.0 0.1 0.15 0.2 0.25 0.3 0.4 0.5]
+// glow ink sign text: a light glow, kept low so the text stays readable
+#define GLOW_INK_TEXT 0.15     //[0.0 0.05 0.1 0.15 0.2 0.25 0.3 0.4]
 #define BLOOM_THRESHOLD 0.45    //[0.0 0.05 0.1 0.15 0.2 0.25 0.3 0.35 0.4 0.45 0.5 0.55 0.6 0.65 0.7 0.75 0.8 0.85 0.9 0.95 1.0]
 #define COLORED_LIGHT
-#define COLORED_LIGHT_STRENGTH 2.0 //[0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
-#define COLORED_LIGHT_RANGE 64 //[16 24 32 40 48 56 64 96 128 160 192 224 256]
+#define COLORED_LIGHT_STRENGTH 1.5 //[0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
 #define CL_FALLOFF 0.5 //[0.5 0.75 1.0 1.25 1.5 1.75 2.0]
 #define VOXEL_SIZE 128 //[64 128 192 256 384 512]
 #define TORCH_FALLOFF 1.0 //[0.6 0.7 0.8 0.9 1.0 1.15 1.3 1.5 1.75 2.0]
@@ -135,13 +170,11 @@
 #endif
 #define VOXEL_VOLUME_SIZE vec3(float(VOXEL_SIZE), float(VOXEL_HEIGHT), float(VOXEL_SIZE))
 
-// effective colored-light range: the user slider, hard-capped at half the
-// volume width (beyond that the toroidal wrap would ghost)
-#if COLORED_LIGHT_RANGE * 2 > VOXEL_SIZE
-   #define CL_RANGE_EFF (0.5 * float(VOXEL_SIZE))
-#else
-   #define CL_RANGE_EFF float(COLORED_LIGHT_RANGE)
-#endif
+// colored-light range: half the volume width (the volume IS the range - the
+// old separate "Light color range" slider was capped by it, so past 64 it
+// did nothing at the default volume of 128), and never past the shadow
+// distance: the shadow pass, which feeds the volume, culls beyond it
+#define CL_RANGE_EFF min(0.5 * float(VOXEL_SIZE), shadowDistance)
 #define BLOOM_CORE 0.4
 #define BLOOM_HALO_MID 1.0     // wide halo: mip level 2 of the blurred glow
 #define BLOOM_HALO_WIDE 0.6    // wider halo: mip level 4
@@ -174,8 +207,45 @@ const int   shadowMapResolution = 1024;  //[256 512 1024 2048 3072 4096]
 const float shadowDistance      = 128.0; //[8.0 16.0 32.0 64.0 96.0 128.0 192.0 256.0 384.0 512.0 1024.0]
 const float shadowIntervalSize  = 7.0;  //[1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0 10.0 11.0 12.0 13.0 14.0 15.0 16.0]
 const float shadowDistanceRenderMul = 1.0;
+
+// shadow.culling=reversed (shaders.properties) keeps every shadow-pass chunk
+// within voxelDistance of the camera UNCULLED (the colored light volume
+// then knows the light sources behind you), and culls the rest with Iris'
+// advanced shadow frustum, which follows the view direction. Iris' default
+// is 0: lights behind the player vanished from the colored light.
+// a light carries ~17-25 blocks (Light reach), so one farther than ~32
+// blocks behind you cannot light anything you see: 32 covers it. the first
+// fix used half the volume (64 blocks, 96 on High) - 8x the shadow-pass
+// geometry, drawn even behind you, and a big swing in what the advanced
+// frustum draws on every fast turn. 0 = Iris' old behavior (test/compare).
+// literal branches: Iris reads const directives textually
+#define CL_BEHIND_DISTANCE 32 //[0 16 24 32 48 64]
+#if CL_BEHIND_DISTANCE == 0
+const float voxelDistance = 0.0;
+#endif
+#if CL_BEHIND_DISTANCE == 16
+const float voxelDistance = 16.0;
+#endif
+#if CL_BEHIND_DISTANCE == 24
+const float voxelDistance = 24.0;
+#endif
+#if CL_BEHIND_DISTANCE == 32
+const float voxelDistance = 32.0;
+#endif
+#if CL_BEHIND_DISTANCE == 48
+const float voxelDistance = 48.0;
+#endif
+#if CL_BEHIND_DISTANCE == 64
+const float voxelDistance = 64.0;
+#endif
 const float entityShadowDistanceMul = 0.2; //[0.125 0.2 0.25 0.333 0.5 0.75 1.0]
 const float sunPathRotation = 0.0; //[-90.0 -85.0 -80.0 -75.0 -70.0 -65.0 -60.0 -55.0 -50.0 -45.0 -40.0 -35.0 -30.0 -25.0 -20.0 -15.0 -10.0 -5.0 0.0 5.0 10.0 15.0 20.0 25.0 30.0 35.0 40.0 45.0 50.0 55.0 60.0 65.0 70.0 75.0 80.0 85.0 90.0]
+
+// loaded-terrain water fades its reflections (SSR) and texture glint to 0
+// over this many blocks before the edge of the render distance: Voxy LOD
+// water has neither, and the switch drew a hard, chunk-stepped line where
+// the loaded chunks end. 0 = off
+#define WATER_EDGE_FADE 48         //[0 16 32 48 64 96 128]
 
 #define WATER_WAVE_SIZE 1          //[0 1 2 3 4 5 6 7 8 9 10]
 #define WATER_WAVE_SPEED 2         //[1 2 3 4 5 6 7 8 9 10]
@@ -229,7 +299,7 @@ const float sunPathRotation = 0.0; //[-90.0 -85.0 -80.0 -75.0 -70.0 -65.0 -60.0 
 #endif
 #ifdef HDR
 #endif
-#ifdef BLOOM_SKY
+#ifdef SUN_GLOW
 #endif
 #ifdef BLOOM_EMISSIVE_TEXTURES
 #endif

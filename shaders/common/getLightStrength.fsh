@@ -30,7 +30,12 @@ float getLightStrength(float diffuse, float skyLight, vec3 feetPos) {
       float shadowFade  = 1.0 - posDistance * INV_SHADOW_MAX_DIST_SQUARED;
       float shadowDepth = texture2D(shadowtex1, shadowUV.st).x;
 
-      return diffuse * (1.0 - shadowFade * clamp(3.0*(shadowDepth - shadowUV.z) / shadowProjection[2].z, 0.0, 1.0));
+      // occluder strength: 1, or less for an entity fading out at the edge
+      // of the entity shadow range (shadow.vsh)
+      float occluderOpacity = texture2D(shadowcolor0, shadowUV.st).a;
+
+      return diffuse * (1.0 - shadowFade * occluderOpacity
+                            * clamp(3.0*(shadowDepth - shadowUV.z) / shadowProjection[2].z, 0.0, 1.0));
    }
 
    return diffuse;

@@ -31,7 +31,7 @@ Also available on [Modrinth](https://modrinth.com/shader/miniaturexl).
 Download or clone this repository, zip the contents (`shaders/` and `LICENSE` must be at the archive root, not inside an extra folder), and drop the zip into `.minecraft/shaderpacks`.
 
 ```
-MiniatureXL_1.0.zip
+MiniatureXL_1.2.zip
 ├── LICENSE
 └── shaders/
 ```
@@ -42,19 +42,22 @@ Alternatively, place the unzipped folder directly in `shaderpacks` — Iris load
 
 ## What this fork adds
 
-**Voxel colored lighting.** Light sources write their palette color into a 3D volume during the shadow pass; a compute shader flood-fills it every frame; the gbuffers read it back and tint the vanilla light accordingly. Intensity stays vanilla — only the hue comes from the voxel field, so light never appears where Minecraft has none.
+**Voxel colored lighting.** Light sources write their palette color, at their real vanilla emission level, into a 3D light propagation volume from the shadow-pass vertex stage; a compute shader propagates it one step per frame around corners but never through walls; the gbuffers read it back for both the hue and the strength of block light.
 
-- per-block-type palette with configurable colors (torch, soul, lava, redstone, amethyst, sea, portal, glowstone, end rod, glow lichen), plus fixed colors for froglights, copper torches/lanterns and sculk sensors
-- adjustable volume size (64–512 blocks, height doubles past 256), range, falloff softness, block light softness and color transition speed
+- per-block-type palette with configurable colors (torch, soul, lava, redstone, amethyst, sea, portal, glowstone, end rod, glow lichen), plus fixed colors for froglights, copper torches/lanterns, sculk, nether stems, creaking heart and more
+- adjustable range (32–256 blocks), light reach, color intensity, block light softness
+- light sources behind the player keep feeding the volume (*Lights behind you*)
 - works in the Overworld, the Nether and the End
 - dynamic lights from held items, dropped items, item frames, burning mobs and flaming arrows, and intrinsically glowing mobs
 - lava follows a resource pack's biome tint (tested with Nature X) for both its surface and the light it casts
 
 **Lighting and sky.** Sky color screen (sun at noon/dusk, sky tint by time of day) wired into the ambient ground light; time-of-day shadow opacity (full strength by day, faint at night) instead of shadows fading out entirely.
 
-**Bloom.** Per-category pixel cutoffs so only the emitting pixels of a block glow (torch flame yes, torch stick no), per-category glow ceilings and hue correction, beacon beam glow, and an optional enchantment glint glow.
+**Bloom.** Per-material emissive masks so only the emitting texels of a block glow (torch flame yes, torch stick no): a lightness-ranked mask (the lightest texels of a texture glow 100%, darker ones less) for fire, lamps, copper bulbs at every oxidation stage, amethyst, crying obsidian, blaze and creaking heart; vein masks for warped and crimson stems (the animated pulse at 100%, the plain veins at 55%); a Photon-like nether portal. Glow ink sign text, the calibrated sculk sensor crystal (stronger while it fires), creaking eyes and the warden's sonic boom glow too. Per-category glow sliders, a sun & moon glow toggle, beacon beam glow and an optional enchantment glint glow.
 
-**Voxy compatibility.** LOD terrain is excluded from the emissive-overlay glow path, the pack's stylized shading fades back to vanilla before the render distance so the LOD handoff has no visible seam, and translucent blocks purge the glow buffer so LODs seen through tinted glass do not light up.
+**Quality profiles.** *Faible*, *Medium* (the defaults) and *Élevé* set shadow, reflection, bloom and colored-light quality together.
+
+**Voxy compatibility.** LOD terrain is excluded from the emissive-overlay glow path, the pack's stylized shading fades back to vanilla before the render distance so the LOD handoff has no visible seam, water reflections and glint fade out before the loaded chunks end (LOD water has neither), and translucent blocks purge the glow buffer so LODs seen through tinted glass do not light up.
 
 ## Settings
 

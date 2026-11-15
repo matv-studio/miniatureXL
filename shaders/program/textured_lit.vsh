@@ -136,7 +136,7 @@ void main() {
    #ifdef IRIS_FEATURE_BLOCK_EMISSION_ATTRIBUTE
       lightSourceLevel = at_midBlock.w < 16.0 ? at_midBlock.w / 15.0 : 0.0;
    #else
-      lightSourceLevel = float(mc_Entity.x == 10068.0 || mc_Entity.x == 10072.0);
+      lightSourceLevel = float(mc_Entity.x == 10068.0 || mc_Entity.x == 10072.0 || mc_Entity.x == 10260.0);
    #endif
 
    #ifdef GBUFFERS_TERRAIN
@@ -146,8 +146,19 @@ void main() {
       #ifdef IRIS_FEATURE_BLOCK_EMISSION_ATTRIBUTE
          // groups whose emission depends on the block state (furnaces,
          // redstone torch and lamp, lit ore...) only shine while they emit
-         if (lightSourceLevel <= 0.0 && getLightEmitFloor(int(mc_Entity.x)) <= 0.0) {
+         // amethyst blocks (10261) glow without emitting anything
+         if (lightSourceLevel <= 0.0 && getLightEmitFloor(int(mc_Entity.x)) <= 0.0
+          && mc_Entity.x != 10261.0) {
             emissive.w = 0.0;
+         }
+
+         // copper bulbs: the core's lightest texel drops with oxidation
+         // (vanilla L 0.91 / 0.83 / 0.72 / 0.61 at light 15 / 12 / 8 / 4).
+         // the 100% point follows the bulb's own light level, so the
+         // oxidized bulb's core glows as fully as the fresh one's
+         if ((mc_Entity.x == 20007.0 || mc_Entity.x == 20008.0) && lightSourceLevel > 0.0) {
+            emissive.y = 0.501 + 0.41 * lightSourceLevel;
+            emissive.z = emissive.y - 0.32;
          }
       #endif
 
@@ -159,11 +170,11 @@ void main() {
       emissiveGlowGain = (lightSourceLevel > 0.12 || mc_Entity.x == 10212.0 || mc_Entity.x == 10225.0)
                        ? 1.0 / max(emissive.w, 0.05) : 1.0;
 
-      // per-material glow trims (user tuning): end rods half, warped stems
-      // double (their texels then glow up to 2: colortex2 clips each
-      // channel at 1, so the teal saturates and its halo doubles)
+      // per-material glow trims (user tuning): end rods half. the nether
+      // stems lost their x2: their vein masks peak at 1.0 on the animated
+      // pulse (100%) and their glow color is taken unlit (textured_lit.fsh)
       if (mc_Entity.x == 10213.0) emissiveGlowGain *= 0.5;                          // end rod
-      if (mc_Entity.x == 10223.0 || mc_Entity.x == 10224.0) emissiveGlowGain *= 2.0; // nether stems
+      if (mc_Entity.x == 10261.0) emissiveGlowGain *= 0.8;                          // amethyst blocks: lightest facets 80%
       if (mc_Entity.x == 10212.0) emissiveGlowGain *= 2.0;                          // brewing stand rod
       if (mc_Entity.x == 10226.0) emissiveGlowGain *= 3.0;                          // eyeblossom eye (2x2 texels)
 
@@ -184,7 +195,8 @@ void main() {
          // also blazes and magma cubes (10304), glow squids (10305) - their
          // fullbright look needs full SKY light too, so under a roof only
          // this mask keeps their hot parts / spots glowing
-         if (entityId >= 10304 && entityId <= 10306) {
+         // and the creaking (10307): its orange eye texels
+         if (entityId >= 10304 && entityId <= 10307) {
             emissive = getEmissiveParams(entityId);
          }
       #endif
@@ -295,12 +307,12 @@ void main() {
          // (high luma) glows softly instead of whiting out. note: saturated
          // dark-red lavas sit below the luma cutoff and get no surface glow
          // at all - this cap is then irrelevant for them
-         bloomLevelCap = (bloomId == 10068 || bloomId == 10208) ? 0.4 : 3.0; // > 1: per-material trims
+         bloomLevelCap = (bloomId == 10068 || bloomId == 10208 || bloomId == 20001) ? 0.4 : 3.0; // > 1: per-material trims
+         // (20001: the lava cauldron, same lava glow ceiling)
 
-         // sculk sensors: their active tendrils render fullbright, which the
-         // overlay path would glow at FULL strength (blinding white). route
-         // them through the luma-shaped overlay (0.5 marker: only the
-         // texture's light pixels - tendril tips, calibrated crystal) and cap
+         // sculk sensor (10219; the calibrated ones have their own crystal
+         // groups 10264-10266): its active tendrils render fullbright - kept
+         // off the full-strength overlay path, and its cyan specks capped
          if (bloomId == 10219) {
             bloomOverlayOk = min(bloomOverlayOk, 0.5);
             bloomLevelCap = 0.5;
@@ -322,25 +334,14 @@ void main() {
             glowScale = GLOW_MOBS;
          #endif
 
-         if (bloomId == 10201 || bloomId == 10218) cutoff += 0.2; // flame-bodied: torch,
-                                     // lantern, campfire, copper torch/lantern
-         else if (bloomId == 10207 || bloomId == 10213
-               || (bloomId >= 10215 && bloomId <= 10217)) cutoff -= 0.1; // glowstone group,
-                                     // end rod, froglights
-         else if (bloomId == 10214) cutoff -= 0.15; // glow lichen: dim teal texture
-         else if (bloomId == 10068 || bloomId == 10208) cutoff += 0.15; // lava, magma: the pack
-                                     // brightens lava's vertex color, so only the hottest
-                                     // veins should pass the pixel mask, not the whole surface
-         else if (bloomId == 10209) cutoff = 9.9;   // candles: the flame is a particle,
-                                                    // the block itself is just wax - no glow
-         else if (bloomId == 10210 || bloomId == 10211) cutoff += 0.2; // stone-bodied emitters
-                                     // (furnace, smoker, ender chest...): only the fire /
-                                     // bright opening glows, never the stone body
-         else if (bloomId == 10203 || bloomId == 10220) cutoff -= 0.25; // redstone torch head,
-                                     // lit redstone ore: dim red emitting pixels
-         else if (bloomId == 10204 || bloomId == 10206) cutoff -= 0.2;  // amethyst, portal
-                                     // blocks: violet/purple pixels have low luminance
-         else if (bloomId == 10212) {
+         // the luma cutoff only shapes the glow of light sources WITHOUT an
+         // emissive model (textured_lit.fsh): every palette category has one
+         // now, so the old per-category cutoffs (flames, lamps, lava, stone-
+         // bodied emitters...) were dead code. what remains: blocks that must
+         // never glow, the brewing stand's forced emission, held items
+         if (bloomId == 10209 || bloomId == 10262) cutoff = 9.9; // candles (the flame is a
+                                     // particle), enchanting table: cast light, never glow
+         if (bloomId == 10212) {
             // brewing stand ("alambic"): emits only light level 1, below the emitter
             // threshold - force it so the blaze rod always glows; the default cutoff
             // masks the rod (bright gold) from the stone base by itself

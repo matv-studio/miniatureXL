@@ -30,7 +30,10 @@ varying vec4 color;
    flat varying float lightSourceLevel;
    flat varying float glowScale;
    flat varying vec4 emissive;
+   flat varying float portalBlob;
 #endif
+
+flat varying float portalSurface;
 
 #ifdef COLORED_LIGHT_ACTIVE
    varying vec3 lpvNormal;
@@ -50,6 +53,7 @@ void main() {
    }
 
    vec4 albedo  = texture2D(gtexture, texUV);
+   vec4 rawTexel = albedo; // before the water/lighting changes below
    vec4 ambient = ambient;
    vec4 color   = color;
 
@@ -77,6 +81,17 @@ void main() {
 
    albedo *= color * ambient;
 
+   // nether portal (Photon-like, see PORTAL_BRIGHTNESS): self-lit - no
+   // ambient, no light volume tint washing its violet out - its brightness
+   // and opacity both follow the texel's density. HDR keeps the x1.66 of
+   // the lightest streaks, which then burn toward pink-white
+   float portalDensity = max(rescale(luma(rawTexel.rgb), 0.0, 0.6), 0.23);
+
+   if (portalSurface > 0.5) {
+      albedo.rgb = rawTexel.rgb * (portalDensity * PORTAL_BRIGHTNESS);
+      albedo.a = clamp(rawTexel.a * portalDensity * 2.0, 0.0, 1.0) * PORTAL_OPACITY;
+   }
+
    albedo.rgb = mix(albedo.rgb, gradientFogColor, fogMix);
 
    #ifdef BLOOM_PASS
@@ -100,9 +115,26 @@ void main() {
 
       vec3 bloomColor = albedo.rgb * min(4.0, max(1.0, 0.5 / max(texLuma, 0.001)));
 
+      // colortex2.a is read by nothing but final.fsh's portal test: any
+      // value >= 0 means "not a portal" (blend ONE ZERO: written exactly)
+      float glowMarker = albedo.a;
+
+      if (portalBlob > 0.5) {
+         // nether portal, like Photon's bloom of its emission: the glow
+         // follows the texel's LINEAR luminance x its density - the dark
+         // body almost nothing (~6%), the lightest streaks past 100% (up to
+         // ~135%: colortex2 is a float buffer). vivid color: the texel's own
+         // hue at full brightness, not brightness-normalized
+         vec3 portalLinear = rawTexel.rgb * rawTexel.rgb;
+
+         bloomLevel = min(luma(portalLinear) * portalDensity / 0.20, 1.4);
+         bloomColor = rawTexel.rgb / max(max(rawTexel.r, rawTexel.g), max(rawTexel.b, 0.001));
+         glowMarker = -1.0; // final.fsh: keep part of the halo on the portal surface
+      }
+
       gl_FragData[3] = vec4(
          clamp(bloomColor, 0.0, 1.0) * (bloomLevel * glowScale * (1.0 - fogMix) * bloomDistFade),
-         albedo.a
+         glowMarker
       );
    #endif
 }

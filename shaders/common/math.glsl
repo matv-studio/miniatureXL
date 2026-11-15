@@ -19,6 +19,19 @@ float luma(vec3 color) {
    return dot(vec3(0.299, 0.587, 0.114), color);
 }
 
+// 1 well inside the loaded terrain, 0 at its edge: fades what Voxy LOD
+// water lacks (reflections, glint) out before the loaded chunks end. the
+// edge is chunk-stepped, its innermost steps ~16 blocks inside the render
+// distance (far): the fade ends there
+float waterEdgeFade(vec3 feetPos, float renderFar) {
+   #if WATER_EDGE_FADE > 0
+      float edge = renderFar - 16.0;
+      return 1.0 - clamp((length(feetPos.xz) - (edge - float(WATER_EDGE_FADE))) / float(WATER_EDGE_FADE), 0.0, 1.0);
+   #else
+      return 1.0;
+   #endif
+}
+
 float rescale(float x, float a, float b) {
    return clamp((x - a) / (b - a), 0.0, 1.0);
 }

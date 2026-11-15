@@ -257,3 +257,54 @@ The GitHub API answers `sessions are bound to their configured repositories` —
 Confirmed working by the user: colored light in all three dimensions; entity, item and burning-mob lights; copper torches and lanterns; froglights; sculk sensors; the Voxy tinted-glass fix and seam matching; day/night shadow opacity; lava following Nature X.
 
 Shipped but awaiting a report: the soul-sand-valley lava hue alignment (§2.4) and the saturation rescale (§2.5), both delivered in the final zip.
+
+---
+
+## 11. Version 1.2 — glow masks, colored light fixes, profiles
+
+**Context**: 1.1 had been built outside this repository and was never pushed — `main` still held 1.0 (§9 again). The user supplied the 1.1 zip; it was committed unchanged before the 1.2 work. This session also ran without the game: everything below was checked with `check.py` and by measuring the vanilla textures (lightness, hue and saturation per palette color) in Python, then reported on by the user in game.
+
+### 11.1 Colored lights disappeared once behind the player
+
+**Cause**: `shadow.culling=reversed` with no `voxelDistance` declared. Iris defaults it to 0 (`PackShadowDirectives`), so `ReversedAdvancedShadowCullingFrustum` culled the whole shadow pass with the advanced frustum: only geometry able to cast a shadow into the view was drawn, and the voxelizer never saw the chunks behind the camera. Not a mod.
+
+**Fix**: declare `voxelDistance`. First set to half the volume (64 blocks) — the user then reported micro-freezes on fast 180° turns: everything within 64 blocks was drawn in the shadow pass, behind the player too, and a fast turn swings what the advanced frustum draws past it. Reduced to 32 (a light reaches ~17–25 blocks, so nothing farther behind can light the view) and exposed as *Lights behind you* (0 = old behavior, for comparison). Whether that cured the hitches had not been reported at the time of writing.
+
+### 11.2 Glow masks rebuilt per material
+
+**Reported**: the warped stem glowed everywhere; the portal glow was patchy; weak sources barely glowed; glow looked soft and washed out.
+
+**Causes, measured on the vanilla textures**:
+- warped stem: the hue mask (0.555 ± 0.17) gave the dark plain veins 100% and the bright animated pulse 58–67%; the stripped stem (all teal) glowed on every texel, its top on 212 of 256.
+- portal: the hue mask was centered on 0.83, the texture sits at 0.72–0.76.
+- copper bulbs: the fixed lightness window 0.68–0.88 missed the oxidized core entirely (its lightest texel is L 0.61) and most of the weathered one.
+- the glow color came from the lit albedo, and the self-light IS the mask in the dark, so the glow went as mask².
+
+**Fix**: the lightness-rank and vein models (`CLAUDE.md`, *Emissive masks*), with y/z per texture; glow color from the unlit texel; the copper bulb's 100% point moves with its light level (15/12/8/4 → core L 0.91/0.83/0.72/0.61).
+
+### 11.3 The nether portal — three rounds
+
+1. An even violet blob (flat level, `CL_PORTAL` color, halo kept on the surface): **rejected**, "uniform, the opposite of what I want".
+2. Lightness rank, darkest texels ~13%: still "too even, looks solid". The halo is a blur, flat over a big portal, and washed the contrast out; the halo is now cut over the whole portal surface.
+3. **Photon's model**, read from `gbuffers_all_translucent.fsh` / `material.glsl`: the portal is self-lit, each texel weighted by a density from its luminance (`linear_step(0, 0.6)`, floor 0.23) for brightness *and* opacity, and bloom comes from the linear emission. Reproduced without the parallax layers: dark body ×0.46 and ~6% glow, see-through; bright swirl ×1.66 (HDR) and up to ~135% glow, opaque.
+
+### 11.4 Settings that did nothing
+
+- **Light color range** was capped at half the volume size: at the default volume (128) anything past 64 did nothing. Merged into the volume setting, now labeled *Colored light range* in blocks; also capped by the shadow distance, which feeds the volume.
+- **Glow pixel cutoff** only shaped emitters without an emissive model — none left in vanilla. Fixed at 0.5, removed from the menu.
+- **Sky glow** (`BLOOM_SKY`) did work, but its halo was hidden by the much wider glow the sun shafts spread over open sky. Replaced by *Sun & moon glow*, which turns both off. A "rays only" shaft variant was tried and **rejected**: its 12 dithered taps were very noisy over Voxy terrain.
+- **Light reach** works — checked by simulating the propagation with the shader's constants: a level-15 source reaches ~17 blocks at the lowest setting, ~25 at the highest (8 blocks: 47% vs 60%). Its effect is in the tail past vanilla's 15 blocks, crushed by the daylight curve, hence the impression it did nothing.
+
+### 11.5 Other additions
+
+Glow ink sign text (§ `CLAUDE.md` on block-entity text), calibrated sculk sensor crystal by phase, beacon core only (not its glass), no glow on the enchanting table, creaking eyes (main texture: its 9 orange texels are the eyes), sonic boom at 10% (Iris gives particles no id: matched by exact texel color), lava cauldron, soul fire as fire, water reflections and glint faded out before the LOD boundary, entity shadows faded over the last 20% of their range, three quality profiles (*Medium* = the `shader.h` defaults).
+
+### 11.6 Rolled back at the user's request
+
+- Amethyst clusters and buds on the lightness rank: back to the original model.
+- Color intensity default: 2.0 → 1.25 → 1.5.
+
+### 11.7 Validation note
+
+`check.py` caught one real error that a read-through missed: `WAVING_ACTIVE` is defined *inside* `common/waving.glsl`, so a declaration block placed before that include did not see it, and the Nether/End variants without colored light failed to compile. Run it before every push.
+

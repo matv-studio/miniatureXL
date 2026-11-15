@@ -38,7 +38,7 @@ varying vec2 texUV;
 
       // the sky path is a SUN/MOON HALO: it only applies in a tight cone around
       // the sun or moon direction
-      #ifdef BLOOM_SKY
+      #ifdef SUN_GLOW
          if (depth >= 1.0) {
             vec3 viewDir = normalize(screen2view(uv, 1.0));
             vec3 sunDir  = normalize(sunPosition);

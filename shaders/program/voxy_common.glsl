@@ -66,12 +66,15 @@ float voxyLightSourceLevel(float id) {
    if (id == 10201.0 || id == 10205.0 || id == 10207.0 || id == 10257.0) return 1.0; // torch/lantern, sea lantern, glowstone, jack o'lantern
    if (id >= 10215.0 && id <= 10218.0) return 1.0;            // froglights, copper torch/lantern
    if (id == 10213.0) return 14.0/15.0;                        // end rod
-   if (id == 10202.0 || id == 10206.0) return 10.0/15.0;      // soul lights, portal / crying obsidian
+   if (id == 10202.0 || id == 10206.0 || id == 10260.0) return 10.0/15.0; // soul lights, portal / crying obsidian, soul fire
    if (id == 10214.0 || id == 10211.0) return 7.0/15.0;       // glow lichen, ender chest / end portal frame
    if (id == 10204.0) return 0.33;                             // amethyst buds/cluster (floor)
    if (id == 10208.0) return 3.0/15.0;                         // magma
    if (id == 10212.0) return 0.27;                             // brewing stand (floor)
    if (id == 10219.0 || id == 10221.0 || id == 10222.0) return 0.2; // sculk, redstone (floor)
+   if (id >= 10264.0 && id <= 10266.0) return 0.2;            // calibrated sculk sensors (floor)
+   if (id == 10262.0) return 7.0/15.0;                         // enchanting table
+   if (id == 10263.0) return 1.0;                              // beacon
    if (id == 10223.0 || id == 10224.0) return 0.13;            // nether stems (floor)
    if (id == 10225.0) return 0.33;                             // awake creaking heart
    if (id == 10226.0) return 0.2;                              // open eyeblossom

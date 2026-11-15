@@ -35,11 +35,14 @@ varying vec4 color;
    flat varying float lightSourceLevel;
    flat varying float glowScale; // Glow per block slider (nether portal...)
    flat varying vec4 emissive;   // emissive model (lightPalette.glsl), 0 = none
+   flat varying float portalBlob; // 1 on an emitting nether portal (halo kept on its surface)
 #endif
 
 #ifdef COLORED_LIGHT_ACTIVE
    varying vec3 lpvNormal; // geometric world-space normal (colored light lookup)
 #endif
+
+flat varying float portalSurface; // 1 on the nether portal (opacity, translucent.fsh)
 
 #include "/common/math.glsl"
 #include "/common/transformations.glsl"
@@ -70,6 +73,8 @@ void main() {
    #endif
 
    float sunHeight = view2feet(sunPosition).y;
+
+   portalSurface = float(mc_Entity.x == 10206.0);
 
    color        = gl_Color;
    texUV        = (gl_TextureMatrix[0] * gl_MultiTexCoord0).st;
@@ -111,7 +116,15 @@ void main() {
       // translucent emitters glow on their emissive texels like terrain
       // (the luma test missed the dark violet of the nether portal), and
       // only while they emit
-      emissive = lightSourceLevel > 0.12 ? getEmissiveParams(int(mc_Entity.x)) : vec4(0.0);
+      // the nether portal is the only translucent of group 10206 (crying
+      // obsidian and respawn anchors are terrain): its own lightness range
+      bool isPortal = mc_Entity.x == 10206.0;
+
+      emissive = lightSourceLevel <= 0.12 ? vec4(0.0)
+               : isPortal ? PORTAL_EMISSIVE
+               : getEmissiveParams(int(mc_Entity.x));
+
+      portalBlob = float(isPortal && emissive.w > 0.0);
    #endif
 
    if (mc_Entity.x == 10008.0) {
@@ -126,7 +139,7 @@ void main() {
       #endif
 
       reflectivity = WATER_REFLECTIVITY;
-      waterTexStrength = getWaterTextureStrength(posRandom);
+      waterTexStrength = getWaterTextureStrength(posRandom) * waterEdgeFade(feetPos, far);
    }
 
    normal = ndc2screen(normal);

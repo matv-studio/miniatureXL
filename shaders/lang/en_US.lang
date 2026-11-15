@@ -1,9 +1,11 @@
 #shaders/lang/en_us.lang
 
-profile.LOWEST=Lowest
-profile.LOW=Low
-profile.NORMAL=Normal
-profile.HIGH=High
+profile.LOW=Faible
+profile.LOW.comment=Shadows 512 px / 64 blocks, no block reflections, fast glow, no particle glow and no sun shafts, colored light over 64 blocks
+profile.MEDIUM=Medium
+profile.MEDIUM.comment=The default settings: shadows 1024 px / 128 blocks, balanced glow, colored light over 128 blocks
+profile.HIGH=Élevé
+profile.HIGH.comment=Shadows 2048 px / 192 blocks, longer reflections, fancy glow, colored light over 192 blocks
 
 screen.WATER_SCREEN=Water
 screen.WAVING_SCREEN=Waving
@@ -24,6 +26,8 @@ option.WATER_A=Water opacity
 option.WATER_MIN_GLINT=Glint strength §e[?]
 option.WATER_MIN_GLINT.comment=Determines how much texture the water retains; moving water still keeps all texture
 option.WATER_GLINT_BRIGHTNESS=Glint brightness
+option.WATER_EDGE_FADE=Water edge fade
+option.WATER_EDGE_FADE.comment=Fades water reflections and glint to 0 over this many blocks before the render distance ends, so loaded water blends into Voxy LOD water (which has neither) without a visible chunk edge. 0 = off
 option.WATER_GLINT_CUTOFF=Glint cutoff
 option.WATER_WAVE_SIZE=Wave size
 option.WATER_WAVE_SPEED=Wave speed
@@ -56,7 +60,7 @@ option.shadowMapResolution=Shadow resolution
 option.shadowIntervalSize=Shadow refocus §e[?]
 option.shadowIntervalSize.comment=Determines after how many blocks shadows refocus on the player
 option.entityShadowDistanceMul=Entity shadow range §e[?]
-option.entityShadowDistanceMul.comment=As a percentage of shadow distance
+option.entityShadowDistanceMul.comment=As a percentage of shadow distance. Entity shadows fade out over the last 20% of this range instead of popping
 option.SHADOW_PIXEL=Shadow pixelization
 option.HDR=HDR highlights §e[?]
 option.HDR.comment=Keeps light brighter than white instead of clipping it: glowing texels, flames and strongly lit surfaces roll off toward white (hot cores) instead of flattening to one color. Everything below white is unchanged
@@ -94,10 +98,8 @@ value.BLOOM_QUALITY.1=§eBalanced
 value.BLOOM_QUALITY.2=§cFancy
 option.BLOOM_SATURATION=Glow saturation §e[?]
 option.BLOOM_SATURATION.comment=Above 1 makes the glow color more vivid than the source texture; below 1 washes it out
-option.BLOOM_SKY=Sky glow §e[?]
-option.BLOOM_SKY.comment=Lets the sun and bright sky glow; blocks are unaffected - they glow only through real light emission
-option.BLOOM_PIXEL_THRESHOLD=Glow pixel cutoff §e[?]
-option.BLOOM_PIXEL_THRESHOLD.comment=Base brightness a pixel of a light-emitting block needs to glow. Flame-bodied blocks (lantern, campfire, torch) use a stricter value, lava and glowstone a lower one. Raise if block bodies glow, lower if flames lose glow
+option.SUN_GLOW=Sun & moon glow §e[?]
+option.SUN_GLOW.comment=Glow around the sun and moon: the bloom halo and the sun shafts. Off: neither (the Sun shafts setting then has no effect)
 option.BLOOM_EMISSIVE_TEXTURES=Pack emissives §e[?]
 option.BLOOM_EMISSIVE_TEXTURES.comment=Adds glow to emissive overlay textures from resource packs (rendered fullbright)
 option.BLOOM_PARTICLES=Particle glow §e[?]
@@ -111,16 +113,23 @@ option.CL_ENTITY_LIGHT=Entity lights §e[?]
 option.CL_ENTITY_LIGHT.comment=Light items held by other players and mobs emit colored light, burning entities and flaming arrows glow warm, and blazes, magma cubes, glow squids and allays emit their own light. Requires Entity shadows set to All (Shadows screen)
 option.CL_ITEM_LIGHT=Item lights §e[?]
 option.CL_ITEM_LIGHT.comment=Dropped light items and item frames holding one (torch, lantern, glowstone...) emit colored light. Requires Entity shadows set to All (Shadows screen)
-option.COLORED_LIGHT_RANGE=Light color range §e[?]
-option.COLORED_LIGHT_RANGE.comment=Horizontal distance (in blocks) up to which colored light replaces plain vanilla block light; it fades back to vanilla beyond. Automatically capped at half the Volume size
-option.VOXEL_SIZE=Volume size §e[?]
-option.VOXEL_SIZE.comment=Width of the colored light volume in blocks, centered on you; height doubles past 256. Blocks are only known inside the Shadow distance, so keep the Volume within about twice the Shadow distance. GPU memory and compute cost grow with the square of this value: 64-128 cheap, 256 moderate, 384-512 heavy
+option.VOXEL_SIZE=Colored light range §e[?]
+option.VOXEL_SIZE.comment=How far around you colored light is shown: half the value, in blocks (128 = 64 blocks), fading back to plain light at the edge. Also capped by the Shadow distance, which feeds the light volume. GPU memory: 64-128 light, 256 about 85 MB, 384 about 380 MB, 512 about 670 MB
+value.VOXEL_SIZE.64=32 blocks
+value.VOXEL_SIZE.128=64 blocks
+value.VOXEL_SIZE.192=96 blocks
+value.VOXEL_SIZE.256=128 blocks
+value.VOXEL_SIZE.384=192 blocks
+value.VOXEL_SIZE.512=256 blocks
 option.TORCH_FALLOFF=Light softness §e[?]
 option.TORCH_FALLOFF.comment=Reshapes the vanilla block light curve: above 1 lifts dark corners and smooths the hard distance steps of torch light (works everywhere, no leaking possible); below 1 makes falloff harsher. 1.0 = vanilla curve
 option.CL_LAVA_TEXTURE=Lava texture color §e[?]
 option.CL_LAVA_TEXTURE.comment=Lava and magma take their light color from the resource pack (biome tint or texture) instead of the Lava & magma palette sliders. Off = fixed palette color
 option.CL_FALLOFF=Light reach §e[?]
-option.CL_FALLOFF.comment=How far colored light carries. The lowest value matches vanilla reach (a level-15 source fades out after about 15 blocks); higher values carry the light and its color farther. Brightness close to the source does not change
+option.CL_FALLOFF.comment=How far each colored light carries past vanilla's reach. Lowest = vanilla (a level-15 source fades out after about 17 blocks); highest carries it to about 25 blocks and keeps more light at mid range (8 blocks: 60% instead of 47%). Most visible at night and in caves
+option.CL_BEHIND_DISTANCE=Lights behind you §e[?]
+option.CL_BEHIND_DISTANCE.comment=Distance in blocks around you in which light sources keep feeding the colored light even when out of view (behind you). Higher costs shadow-pass rendering and can cause hitches on fast turns. 0 = off: lights behind you drop out of the colored light
+value.CL_BEHIND_DISTANCE.0=Off
 
 screen.CL_COLORS_SCREEN=Light colors
 option.CL_FLAME_R=Flame §cR
@@ -156,8 +165,8 @@ option.CL_ROD_B=End rod §9B
 option.CL_LICHEN_R=Glow lichen §cR
 option.CL_LICHEN_G=Glow lichen §2G
 option.CL_LICHEN_B=Glow lichen §9B
-option.BLOOM_HIGHLIGHTS=Sky glow amount §e[?]
-option.BLOOM_HIGHLIGHTS.comment=Strength of the sky/sun highlight glow; has no effect on blocks
+option.BLOOM_HIGHLIGHTS=Sun & moon glow amount §e[?]
+option.BLOOM_HIGHLIGHTS.comment=Strength of the bloom halo around the sun and moon (Sun & moon glow on); has no effect on blocks
 option.BLOOM_THRESHOLD=Sky glow threshold §e[?]
 option.BLOOM_THRESHOLD.comment=Sky brightness above which the sky starts to glow
 
@@ -207,6 +216,16 @@ option.GLOW_PORTALS.comment=Nether portal, crying obsidian, respawn anchor, end 
 option.GLOW_SCULK=Sculk
 option.GLOW_STEMS=Nether stems
 option.GLOW_STEMS.comment=Warped and crimson stems and hyphae
+option.GLOW_CONTRAST=Glow contrast
+option.GLOW_CONTRAST.comment=Lightness-ranked glow (copper bulbs, lamps, fire, amethyst, crying obsidian...): the lightest texels glow 100%, darker ones less by their lightness. Higher = more contrast
+option.NETHER_VEIN_BASE=Nether vein glow
+option.NETHER_VEIN_BASE.comment=Warped and crimson stems: glow of the plain veins relative to the lighter animated pulse (100%). The bark never glows
+option.PORTAL_OPACITY=Portal opacity
+option.PORTAL_OPACITY.comment=Nether portal opacity. Like Photon, its dark body is see-through and its bright swirl opaque; 1.0 = Photon-like, lower = more see-through overall
+option.SCULK_CRYSTAL_IDLE=Calibrated sensor crystal at rest
+option.SCULK_CRYSTAL_IDLE.comment=Glow of the calibrated sculk sensor's amethyst crystal while idle. It glows 100% while the sensor fires, then fades through its cooldown
+option.GLOW_INK_TEXT=Glow ink text
+option.GLOW_INK_TEXT.comment=Light glow on sign text written with a glow ink sac. Kept low so the text stays readable. 0 = off
 option.GLOW_PLANTS=Glowing plants
 option.GLOW_PLANTS.comment=Open eyeblossom, glow berries, glow lichen, nether fungi, torchflower, chorus
 option.GLOW_BREWING=Brewing stand

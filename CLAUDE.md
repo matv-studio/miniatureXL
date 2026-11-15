@@ -28,20 +28,37 @@ The contribution cannot be optimized away, so the sampler stays live and the pas
 
 **Entity ids reach the shadow pass.** `entityId`, `blockEntityId` and `currentRenderedItemId` are rewritten by Iris's `EntityPatcher` into components of the `iris_Entity` vertex attribute, which is part of the vertex format used by both the gbuffers and shadow entity programs. They are valid in `shadow.vsh`. `minecraft:entity_flame` is a real hardcoded Iris identifier for the flame overlay on a burning entity, and `MixinFlameFeatureRenderer` sets it in the shadow pass too.
 
-**Entity sources must be voxelized from the vertex stage.** The flame overlay is a billboard oriented toward the *player* camera even while the shadow pass renders from the sun — Iris does not re-orient the dispatcher. From the light's point of view it can be edge-on, back-facing (this pack uses `shadow.culling=reversed`) or fully transparent, so a fragment-stage `imageStore` often never executes. `program/shadow.vsh` writes entity sources itself; terrain still writes from the fragment stage because it needs the texture for the lava hue. Bliss does the same thing for the same reason.
+**Entity sources must be voxelized from the vertex stage.** The flame overlay is a billboard oriented toward the *player* camera even while the shadow pass renders from the sun — Iris does not re-orient the dispatcher. From the light's point of view it can be edge-on, back-facing (this pack uses `shadow.culling=reversed`) or fully transparent, so a fragment-stage `imageStore` often never executes. Since 1.1 `program/shadow.vsh` writes the whole voxel map, terrain included, from the vertex stage. Bliss does the same thing for the same reason.
+
+**`shadow.culling=reversed` needs `const float voxelDistance`.** Reversed culling leaves the shadow pass unculled only within `voxelDistance` of the camera and culls the rest with the advanced shadow frustum, which keeps only geometry whose shadow can land in the view. Iris's default is `0.0` (`PackShadowDirectives`), so until 1.2 the whole voxelizer ran under the advanced frustum: chunks behind the player were never drawn in the shadow pass and their lights vanished from the colored light. `shader.h` now declares it from *Lights behind you* (`CL_BEHIND_DISTANCE`, default 32). Keep it modest: everything inside it is drawn in the shadow pass, behind the player too — 64 blocks caused hitches on fast turns. A light carries ~17–25 blocks, so 32 covers every light that can reach what the player sees. Literal `#if` branches only (const directives are read textually).
+
+**Iris sets no render stage for entities in the shadow pass.** `ShadowRenderer` never calls `setPhase`, so `renderStage` cannot single out entities there. `shadow.vsh` identifies them as geometry with no mid-block data outside the terrain stages (entity shadow fade).
+
+**The shadow pass can skip rasterization where no shadow map is read.** In the Nether, the End and the Overworld with shadows off the pass only exists for the vertex-stage voxel writes; `shadow.vsh` then moves every primitive outside the clip volume. The keep-alive tap in `textured_lit.fsh` is gated on `!ENABLE_SHADOWS` (not `!OVERWORLD`), so the Overworld with shadows off keeps its voxelizer too.
+
+**Block-entity text is drawn by `gbuffers_block_translucent`**, which falls back to `gbuffers_block` then `gbuffers_terrain` (`ProgramId`). Sign text therefore reaches `textured_lit` with `GBUFFERS_TERRAIN` defined, no mid-block data and a font page bound (`atlasSize == 0`); glowing text is drawn fullbright. That is how glow ink text is recognized.
+
+**`colortex2.a` and `shadowcolor0.a` carry flags.** `colortex2.a < 0` marks the nether portal for `final.fsh` (translucents write colortex2 with `ONE ZERO`, so the value arrives intact). `shadowcolor0.a` is the occluder's shadow strength (entity shadow fade); nothing else reads either channel.
 
 **`#elif` in `shaders.properties` is unverified.** Nested `#if` / `#else` / `#endif` is known to work and is what the file uses. Parenthesized boolean expressions and `defined X` do work.
 
 ## Colored light architecture
 
+Since 1.1 the colored light is a light propagation volume (`common/lpv.glsl` holds the layout and constants):
+
 ```
-shadow.vsh/fsh   voxelize: palette color -> imageStore(voxelData)
-                 rgb = color * sqrt(level), alpha = sqrt(level) (colorless reference)
-shadowcomp.csh   flood fill: 6-neighbor average / (6.0 + 0.2/CL_FALLOFF)
-                 temporal easing, THEN direct injection (x256 HDR)
-getTorchColor    read both ping-pong volumes, keep the higher-alpha sample,
-                 adopt hue by confidence, scale brightness by palette magnitude
+shadow.vsh       voxelize from the vertex stage: voxelData (rgba8, cleared
+                 each frame) = palette color x vanilla level (at_midBlock.w),
+                 or a tint (stained glass, leaves), or opaque
+shadowcomp.csh   one propagation step per frame: average of self and open
+                 neighbors (LPV_CENTER, LPV_LOSS), x transmission, + emission;
+                 ping-pong by frame parity, re-indexed as the camera moves
+getTorchColor    log transfer 1 + ln(amplitude) / (3.5 + CL_FALLOFF): vanilla
+                 falloff at the lowest Light reach; hue from the field, strength
+                 = max(vanilla, field) with the field capped at vanilla + 0.5
 ```
+
+The sections below describe the 1.0 engine. The color rules still hold; the voxel encoding and the confidence windows they mention are historical.
 
 - **Two volumes, ping-ponged by frame parity.** The reader samples both and keeps the stronger (`alpha`) sample. A parity read alone desynchronizes from the compute cadence and the light visibly pulses between its color and the warm default.
 - **Injection comes *after* the temporal filter**, not before. Filtering the injection caps a source at `CL_TRANSITION` of its strength unless it stays in the same cell for ~`1/CL_TRANSITION` frames, which moving lights (burning mobs, dropped items, held lights) never do — they get drowned out by the static field around them.
@@ -74,4 +91,15 @@ Do not re-propose these; they were implemented, tested in game and rolled back a
 
 ## Block id map
 
-Colored-light groups live in `10201`–`10220` and are declared in `block.properties`, mirrored for held items in `item.properties`, and resolved to colors in `common/lightPalette.glsl`. `shadow.vsh` trusts ids in `(10200, 10221)` without a plausible mid-block offset — **extend that range when adding a new group**, or the new id is treated as foreign geometry and discarded. Reflectivity groups use `20001`–`20017`; they must not overlap.
+Colored-light groups live in `10201`–`10220` and are declared in `block.properties`, mirrored for held items in `item.properties`, and resolved to colors in `common/lightPalette.glsl`. `shadow.vsh` trusts ids in `(10200, 10221)` without a plausible mid-block offset — **extend that range when adding a new group whose geometry may lack one** (fluids), or the new id is treated as foreign geometry and discarded. Reflectivity groups use `20001`–`20017`; they must not overlap.
+
+Glowing materials and split groups added since: `10221` sculk, `10222` redstone, `10223`/`10224` warped/crimson stems, `10225` creaking heart, `10226`–`10229` plants, `10248` spawner, `10253`–`10258` firefly bush, trial spawners, jack o'lantern, campfire, `10260` soul fire, `10261` amethyst blocks (glow, no light), `10262` enchanting table (light, no glow), `10263` beacon, `10264`–`10266` calibrated sculk sensor by phase (inactive / active / cooldown). Entities: `10304` blaze and magma cube, `10305` glow squid, `10306` allay and vex, `10307` creaking.
+
+## Emissive masks
+
+`common/lightPalette.glsl: getEmissiveParams` picks a model per id, `getEmissiveMask` evaluates it per texel. The mask is both the texel's self-light and its glow level. Models: hue window, lightness window, power, saturation, golden, soul, and since 1.2:
+
+- **lightness rank** (`x = -7 - h`, `-8 - h` = vivid texels only): the lightest texels of the texture (L ≥ y) glow 100%, darker ones `rescale(L, z, y)^GLOW_CONTRAST`. `h` in the fraction gates a hue (0..0.5). y/z come from the vanilla texture's own lightness range — measure it before choosing them (copper bulbs move y/z with the oxidation light level in `textured_lit.vsh`).
+- **vein** (`x = -6 - h`): nether stem veins, gated by hue, saturation and a lightness floor (bark), `NETHER_VEIN_BASE` on plain veins, 100% on the animated pulse.
+
+Glow color for these models is taken from the **unlit** texel: the lit albedo carries the self-light, which made the glow go as mask² in the dark.

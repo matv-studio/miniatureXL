@@ -39,6 +39,12 @@ varying vec3 gradientFogColor;
 #endif
 
 #ifdef BLOOM_PASS
+   #ifdef GBUFFERS_TERRAIN
+      // size of the bound texture if it is an atlas, 0 otherwise: the font
+      // pages of sign text are no atlas (glow ink text below)
+      uniform ivec2 atlasSize;
+   #endif
+
    varying float bloomDistFade;
    flat varying float bloomOverlayOk;
    flat varying float bloomCutoff;
@@ -53,8 +59,8 @@ varying vec3 gradientFogColor;
    #define heldBlockLightValue 14
 #endif
 
-#if defined COLORED_LIGHT_ACTIVE && !defined OVERWORLD
-   // the Nether and End cast no shadows, so nothing there samples the shadow
+#if defined COLORED_LIGHT_ACTIVE && !defined ENABLE_SHADOWS
+   // the Nether and End (and the Overworld with shadows off) cast no shadows, so nothing there samples the shadow
    // map - and Iris SKIPS rendering a shadow pass it believes unused,
    // starving the colored light voxelizer. this sampler (tapped invisibly in
    // main) forces the pass to run
@@ -85,6 +91,7 @@ flat varying float emissiveGlowGain;
    uniform mat4 shadowModelView;
    uniform mat4 shadowProjection;
    uniform sampler2D shadowtex1;
+   uniform sampler2D shadowcolor0; // .a: occluder shadow strength (entity fade)
 
    varying vec3 lightColor;
    varying float diffuse;
@@ -105,8 +112,8 @@ void main() {
    // shine at full brightness whatever the lighting, and glow (Photon-like)
    // judged on the tinted texel at full brightness: redstone wire is a gray
    // texture tinted red, and directional shading must not change the mask
-   float emissiveMask = getEmissiveMask(
-      albedo.rgb * color.rgb / max(max(color.r, max(color.g, color.b)), 0.05), emissive);
+   vec3 emissiveTexel = albedo.rgb * color.rgb / max(max(color.r, max(color.g, color.b)), 0.05);
+   float emissiveMask = getEmissiveMask(emissiveTexel, emissive);
 
    #ifdef GBUFFERS_TERRAIN
       float ambientOcclusion = color.a;
@@ -248,7 +255,7 @@ void main() {
 
    albedo.rgb = mix(albedo.rgb, gradientFogColor, fogMix);
 
-   #if defined COLORED_LIGHT_ACTIVE && !defined OVERWORLD
+   #if defined COLORED_LIGHT_ACTIVE && !defined ENABLE_SHADOWS
       // invisible shadow-map tap (see the sampler declaration above): the
       // 1e-6 contribution cannot be folded away, so the sampler stays active
       // and Iris keeps the Nether/End shadow pass (our voxelizer) alive
@@ -329,6 +336,19 @@ void main() {
       // glowing materials: their emissive texels glow, whatever their luma
       bloomLevel = max(bloomLevel, min(emissiveMask * emissiveGlowGain, 3.0));
 
+      #ifdef GBUFFERS_TERRAIN
+         // glow ink sign text. Iris draws block-entity text with
+         // gbuffers_block_translucent, which falls back to this program: no
+         // mid-block data (bloomOverlayOk 0), a font page instead of an atlas
+         // (atlasSize 0), and glowing text is drawn FULLBRIGHT (block and sky
+         // light 15) while plain text takes the sign's own light. a light,
+         // readable glow: GLOW_INK_TEXT on the glyph's lightest pixels
+         float glowInk = float(atlasSize.x == 0 && bloomOverlayOk < 0.25)
+                       * rescale(lightUV.s, 0.935, 0.96) * rescale(lightUV.t, 0.935, 0.96);
+
+         bloomLevel = max(bloomLevel, GLOW_INK_TEXT * glowInk * smoothe(rescale(albedoPeak, 0.1, 0.5)));
+      #endif
+
       // per-category glow ceiling, applied AFTER every glow path (emitter,
       // overlay, ores) so nothing can max() past it: keeps uniformly bright
       // retextured lava from whiting out, and softens the fullbright sculk
@@ -341,6 +361,14 @@ void main() {
       // brightness-normalize the glow color so dark emissive textures (soul fire,
       // sculk, portal...) glow as strongly as bright ones (torch flame)
       vec3 bloomColor = albedo.rgb * min(4.0, max(1.0, 0.5 / max(albedoLuma, 0.001)));
+
+      // vein mode (warped stems): glow color from the UNLIT texel. the lit
+      // albedo carries the self-light (= the mask in the dark), so the glow
+      // went as mask^2 and the plain veins at 55% glowed ~30%. unlit, the
+      // glow follows the mask linearly and the same in light or dark
+      if (emissive.x < -5.5) {
+         bloomColor = emissiveTexel * min(4.0, max(1.0, 0.5 / max(luma(emissiveTexel), 0.001)));
+      }
 
       bloomColor *= bloomTint; // per-category hue correction (copper -> green)
 

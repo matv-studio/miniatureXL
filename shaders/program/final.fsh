@@ -27,7 +27,7 @@ uniform sampler2D depthtex0;
    uniform sampler2D colortex3;
 #endif
 
-#if defined SUN_SHAFTS && defined OVERWORLD
+#if defined SUN_SHAFTS && defined OVERWORLD && defined SUN_GLOW
    uniform float rainStrength;
    uniform vec3 sunPosition;
 #endif
@@ -102,11 +102,11 @@ void main() {
       color.rgb = mix(
          color.rgb,
          reflectionColor.rgb,
-         reflectionColor.a * reflectivity * 0.1*REFLECTIONS
+         reflectionColor.a * reflectivity * 0.1*REFLECTIONS * waterEdgeFade(feetPos, far)
       );
    }
 
-   #if defined SUN_SHAFTS && defined OVERWORLD
+   #if defined SUN_SHAFTS && defined OVERWORLD && defined SUN_GLOW
       if (rainStrength < 0.999) {
          // sun by day, moon by night
          vec3 srcPos = sunPosition;
@@ -160,12 +160,16 @@ void main() {
       // faces of light sources and glowing materials
       vec3 core = vec3(0.0);
       float coreDepth = texture2D(depthtex0, texUV).x;
+      float portalFace = 0.0; // colortex2.a < 0: nether portal (translucent.fsh)
 
       if (coreDepth < 1.0) {
          // same near-field cap as the blur pass: distant/depthless geometry
          // carries no core either
-         core = texture2D(colortex2, texUV).rgb
+         vec4 coreSample = texture2D(colortex2, texUV);
+
+         core = coreSample.rgb
               * (1.0 - pow2(rescale(length(screen2view(texUV, coreDepth)), 96.0, 144.0)));
+         portalFace = coreSample.a < -0.5 ? 1.0 : 0.0;
       }
 
       float ownGlow = smoothe(rescale(luma(core), 0.02, 0.2));
@@ -217,9 +221,11 @@ void main() {
       // the halo belongs AROUND a source: on its own glowing texels it only
       // stacked on top of the core and clipped them to white (amethyst
       // clusters, end rods, whole copper bulbs)
-      glow *= 1.0 - BLOOM_SOURCE_HALO_CUT * ownGlow;
+      // except on the nether portal: there the halo IS the look - it fills
+      // the portal and blends its glow into one soft violet blob
+      glow *= 1.0 - mix(BLOOM_SOURCE_HALO_CUT * ownGlow, PORTAL_SOURCE_HALO_CUT, portalFace);
 
-      glow += core * BLOOM_CORE;
+      glow += core * mix(BLOOM_CORE, PORTAL_CORE, portalFace);
 
       glow = clamp(glow * BLOOM_STRENGTH, 0.0, 1.0);
 
