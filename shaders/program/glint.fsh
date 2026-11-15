@@ -1,7 +1,7 @@
 // enchantment glint (armor, enchanted items): vanilla-equivalent rendering
 // plus a glow that follows the glint texture itself, so a custom purple glint
 // from a resource pack glows in exactly its own color and pattern.
-// toggleable via BLOOM_ENCHANT in the Glow settings screen
+// strength: ENCHANT_GLOW (Glow screen, 0 = off)
 
 #include "/shader.h"
 
@@ -25,10 +25,10 @@ void main() {
 
    float glow = 0.0;
 
-   #if defined BLOOM && defined BLOOM_ENCHANT
+   #ifdef BLOOM
       // the glint texture is dim streaks: a low luma window catches the
       // streaks themselves without lifting the whole item
-      glow = 0.7 * pow2(rescale(luma(albedo.rgb), 0.15, 0.6))
+      glow = 0.7 * ENCHANT_GLOW * pow2(rescale(luma(albedo.rgb), 0.15, 0.6))
            * (1.0 - rescale(bloomDist, 96.0, 144.0));
    #endif
 

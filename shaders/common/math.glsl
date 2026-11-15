@@ -27,6 +27,9 @@ vec3 rescale(vec3 x, vec3 a, vec3 b) {
    return clamp((x - a) / (b - a), vec3(0.0), vec3(1.0));
 }
 
+// GLSL 1.30+ (the Voxy LOD patch is compiled inside Voxy's #version 460
+// shader) has round() built in; keep the GLSL 120 fallback out of it
+#ifndef VOXY_PATCH
 float round(float x) {
    return floor(x + 0.5);
 }
@@ -34,6 +37,7 @@ float round(float x) {
 vec3 round(vec3 x) {
    return floor(x + 0.5);
 }
+#endif
 
 float squaredLength(vec3 v) {
    return dot(v, v);

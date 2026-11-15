@@ -1,4 +1,4 @@
-// bloom pass 2: vertical blur of colortex3 (buffers are flipped between composites)
+// bloom pass 2: horizontal blur of the bloom source in colortex3
 
 #include "/shader.h"
 
@@ -6,23 +6,24 @@ varying vec2 texUV;
 
 #ifdef BLOOM
 
-   uniform float viewHeight;
+   uniform float viewWidth;
    uniform sampler2D colortex3;
 
    void main() {
-      float texelY = BLOOM_DOWNSCALE / viewHeight;
+      float texelX = BLOOM_DOWNSCALE / viewWidth;
 
       vec3 total = vec3(0.0);
       float totalWeight = 0.0;
 
-      // radius scales tap spacing: the slider directly controls halo size
-      float spacing = max(1.0, 0.35 * float(BLOOM_RADIUS));
+      // the tight halo: one texel spacing. its reach is extended in the final
+      // pass by mip levels of this result (Halo size)
+      const float spacing = 1.0;
 
       for (int i = -BLOOM_TAPS; i <= BLOOM_TAPS; i++) {
          float x = float(i) / (0.55 * float(BLOOM_TAPS));
          float weight = exp(-0.5 * x * x);
 
-         total += weight * texture2D(colortex3, texUV + vec2(0.0, float(i) * spacing * texelY)).rgb;
+         total += weight * texture2D(colortex3, texUV + vec2(float(i) * spacing * texelX, 0.0)).rgb;
          totalWeight += weight;
       }
 

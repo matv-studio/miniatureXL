@@ -21,10 +21,6 @@ varying vec3 normal;
 varying vec4 ambient;
 varying vec4 color;
 
-#ifdef VOXY
-   varying float vanillaMix;
-#endif
-
 #ifdef BLOOM
    #define BLOOM_PASS
 #endif
@@ -37,19 +33,41 @@ varying vec4 color;
    #endif
 
    flat varying float lightSourceLevel;
+   flat varying float glowScale; // Glow per block slider (nether portal...)
+   flat varying vec4 emissive;   // emissive model (lightPalette.glsl), 0 = none
+#endif
+
+#ifdef COLORED_LIGHT_ACTIVE
+   varying vec3 lpvNormal; // geometric world-space normal (colored light lookup)
 #endif
 
 #include "/common/math.glsl"
 #include "/common/transformations.glsl"
 #include "/common/getFogMix.vsh"
+#include "/common/lightContrast.glsl"
+#include "/common/lightPalette.glsl"
 #include "/common/getFogColor.vsh"
 #include "/common/getAmbientColor.glsl"
 #include "/common/getViewPosition.vsh"
+#include "/common/waving.glsl"
 #include "/common/getWaterTextureStrength.vsh"
 #include "/common/getWaterWave.vsh"
 
 void main() {
    gl_Position = ftransform();
+
+   #ifdef WAVY_WATER
+      if (mc_Entity.x == 10008.0) {
+         // water surface waves (common/waving.glsl), same as shadow.vsh
+         vec3 wave = getWaving(10008, view2feet((gl_ModelViewMatrix * gl_Vertex).xyz) + cameraPosition,
+                               0.0, false, (gl_TextureMatrix[1] * gl_MultiTexCoord1).t,
+                               frameTimeCounter, rainStrength);
+
+         if (dot(wave, wave) > 0.0) {
+            gl_Position = gl_ModelViewProjectionMatrix * vec4(gl_Vertex.xyz + wave, 1.0);
+         }
+      }
+   #endif
 
    float sunHeight = view2feet(sunPosition).y;
 
@@ -61,15 +79,16 @@ void main() {
    reflectivity = GLASS_REFLECTIVITY;
 
    feetPos = view2feet(getViewPosition());
+
+   #ifdef COLORED_LIGHT_ACTIVE
+      lpvNormal = mat3(gbufferModelViewInverse) * normalize(gl_NormalMatrix * gl_Normal);
+   #endif
    fogMix = getFogMix(feetPos);
    gradientFogColor = getFogColor(fogMix, feetPos, sunHeight);
 
    ambient.rgb *= color.a;
+   ambient.rgb = contrastAmbient(ambient.rgb);
    color.a = 1.0;
-
-   #ifdef VOXY
-      vanillaMix = calcFogMix(feetPos, 0.3, far);
-   #endif
 
    #ifdef BLOOM_PASS
       // clip-space depth cap: unfakeable, see textured_lit.vsh
@@ -86,6 +105,13 @@ void main() {
       #else
          lightSourceLevel = 0.0;
       #endif
+
+      glowScale = getGlowScale(int(mc_Entity.x), lightSourceLevel > 0.12);
+
+      // translucent emitters glow on their emissive texels like terrain
+      // (the luma test missed the dark violet of the nether portal), and
+      // only while they emit
+      emissive = lightSourceLevel > 0.12 ? getEmissiveParams(int(mc_Entity.x)) : vec4(0.0);
    #endif
 
    if (mc_Entity.x == 10008.0) {

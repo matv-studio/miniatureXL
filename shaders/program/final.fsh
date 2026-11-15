@@ -1,5 +1,18 @@
 #include "/shader.h"
 
+#ifdef HDR
+/*
+const int colortex0Format = RGBA16F;
+*/
+#endif
+
+#ifdef BLOOM
+/*
+const bool colortex3MipmapEnabled = true;
+const int colortex2Format = RGBA16F;
+*/
+#endif
+
 uniform float far;
 uniform int isEyeInWater;
 uniform sampler2D colortex0;
@@ -8,6 +21,8 @@ uniform sampler2D colortex7;
 uniform sampler2D depthtex0;
 
 #ifdef BLOOM
+   uniform float viewWidth;
+   uniform float viewHeight;
    uniform sampler2D colortex2;
    uniform sampler2D colortex3;
 #endif
@@ -23,8 +38,35 @@ varying vec2 texUV;
 #include "/common/transformations.glsl"
 #include "/common/getReflectionColor.fsh"
 
+#ifdef BLOOM
+   // one level of the wide halo: the mip chain of the blurred glow
+   // (colortex3MipmapEnabled - Iris builds it right before this pass).
+   // texture2D's bias selects the level: colortex3 is 1/BLOOM_DOWNSCALE of
+   // the screen, so plain sampling sits at lod -log2(BLOOM_DOWNSCALE).
+   // four bilinear taps around the pixel smooth the coarse level into a
+   // tent, so no blocky mip footprint shows
+   vec3 bloomLevel(float lod) {
+      float bias = lod + log2(BLOOM_DOWNSCALE);
+      vec2 d = 0.75 * exp2(lod) * BLOOM_DOWNSCALE / vec2(viewWidth, viewHeight);
+
+      return 0.25 * (texture2D(colortex3, texUV + vec2(-d.x, -d.y), bias).rgb
+                   + texture2D(colortex3, texUV + vec2( d.x, -d.y), bias).rgb
+                   + texture2D(colortex3, texUV + vec2(-d.x,  d.y), bias).rgb
+                   + texture2D(colortex3, texUV + vec2( d.x,  d.y), bias).rgb);
+   }
+#endif
+
 void main() {
    vec4 color = texture2D(colortex0, texUV);
+
+   #ifdef HDR
+      // a float buffer keeps what RGBA8 silently clamped: negative values
+      // and NaN from any upstream math. drop them here (comparisons are
+      // false for NaN)
+      color.rgb = vec3(color.r >= 0.0 ? color.r : 0.0,
+                       color.g >= 0.0 ? color.g : 0.0,
+                       color.b >= 0.0 ? color.b : 0.0);
+   #endif
    vec4 reflectivityAndRoughness = texture2D(colortex7, texUV);
    float reflectivity = reflectivityAndRoughness.x;
    float roughness = reflectivityAndRoughness.y;
@@ -113,19 +155,72 @@ void main() {
    #endif
 
    #ifdef BLOOM
-      vec3 glow = texture2D(colortex3, texUV).rgb;
-
-      // crisp core: the emissive pixels themselves stay hot and sharp, the
-      // blurred halo spreads around them. same depth-based near-field cap as
-      // the blur pass, so distant/depthless geometry carries no core either
+      // per-pixel glow mask: colortex2 holds each pixel's OWN glow (its
+      // emissive texels, per material, per texel), colortex7.a marks the
+      // faces of light sources and glowing materials
+      vec3 core = vec3(0.0);
       float coreDepth = texture2D(depthtex0, texUV).x;
 
       if (coreDepth < 1.0) {
-         glow += texture2D(colortex2, texUV).rgb
-            * (0.35 * (1.0 - pow2(rescale(length(screen2view(texUV, coreDepth)), 96.0, 144.0))));
+         // same near-field cap as the blur pass: distant/depthless geometry
+         // carries no core either
+         core = texture2D(colortex2, texUV).rgb
+              * (1.0 - pow2(rescale(length(screen2view(texUV, coreDepth)), 96.0, 144.0)));
       }
 
-      glow = mix(vec3(luma(glow)), glow, BLOOM_SOURCE_COLOR);
+      float ownGlow = smoothe(rescale(luma(core), 0.02, 0.2));
+      float emitterFace = abs(reflectivityAndRoughness.a - 0.5) < 0.25 ? 1.0 : 0.0;
+
+      #ifdef HDR
+         // punch: a glowing texel's own glow is added to the scene BEFORE
+         // the display mapping, so strong ones reach white-hot
+         color.rgb += core * BLOOM_CORE_HDR;
+      #endif
+   #endif
+
+   #ifdef HDR
+      // HDR -> display. the 0..1 range is returned untouched (the pack's
+      // look). past 1.0 a channel clips and its EXCESS spills into the
+      // other channels, the way film overexposes: a warm color goes orange ->
+      // yellow -> white, never pink. (mixing the hue toward white instead
+      // turned orange into salmon, and washed lava out)
+      {
+         vec3 excess = max(color.rgb - 1.0, vec3(0.0));
+         float peak = max(color.r, max(color.g, color.b));
+
+         // spill shared in proportion to the SQUARE of each channel's
+         // relative level: the channel closest to clipping takes the most,
+         // a mid channel much less (linear shares turned every orange
+         // emitter yellow: copper bulbs, lamps), white only at high excess
+         vec3 share = color.rgb / max(peak, 1.0e-4);
+         vec3 spill = HDR_SPILL * (excess.r + excess.g + excess.b) * share * share;
+
+         color.rgb = min(min(color.rgb, vec3(1.0)) + spill, vec3(1.0));
+      }
+   #endif
+
+   #ifdef BLOOM
+      // multi-scale halo (Photon-like): the tight blur from the composite
+      // passes (a few pixels) + two mip levels of it (~1/8 and ~1/32 of the
+      // screen-space scale). the tight one alone was a few pixels wide: a
+      // lamp read as a crisp core with no halo at all
+      vec3 glow = texture2D(colortex3, texUV).rgb
+                + (BLOOM_HALO_MID * BLOOM_HALO_SIZE) * bloomLevel(2.0)
+                + (BLOOM_HALO_WIDE * BLOOM_HALO_SIZE * BLOOM_HALO_SIZE) * bloomLevel(4.0);
+
+      // a glowing block's own dark texels take only part of the halo: they
+      // stay readable (no flat wash over the face) but the glow still
+      // visibly spills across it - cutting it to zero there erased the
+      // halo on any wall of glowing blocks (warped stems, sculk)
+      glow *= mix(1.0, mix(BLOOM_FACE_HALO, 1.0, ownGlow), emitterFace);
+
+      // the halo belongs AROUND a source: on its own glowing texels it only
+      // stacked on top of the core and clipped them to white (amethyst
+      // clusters, end rods, whole copper bulbs)
+      glow *= 1.0 - BLOOM_SOURCE_HALO_CUT * ownGlow;
+
+      glow += core * BLOOM_CORE;
+
       glow = clamp(glow * BLOOM_STRENGTH, 0.0, 1.0);
 
       // screen blend to avoid harsh clipping

@@ -1,5 +1,9 @@
+// the Voxy patch declares no uniforms: Voxy injects the ones listed in
+// voxy.json as members of a uniform block (see program/voxy_common.glsl)
+#ifndef VOXY_PATCH
 uniform float fogEnd, fogStart;
 uniform float near, far;
+#endif
 
 float calcFogMix(vec3 feetPos, float fogStartMult, float far) {
    float len = length(feetPos);

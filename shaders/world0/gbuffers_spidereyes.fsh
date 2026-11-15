@@ -2,4 +2,4 @@
 
 #define OVERWORLD
 
-#include "/program/basic.fsh"
+#include "/program/eyes.fsh"

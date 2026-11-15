@@ -1,5 +1,7 @@
+#ifndef VOXY_PATCH
 uniform vec3 fogColor;
 uniform vec3 skyColor;
+#endif
 
 #include "/common/getSkyTint.glsl"
 

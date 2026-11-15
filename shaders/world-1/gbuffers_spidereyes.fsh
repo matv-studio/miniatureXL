@@ -2,4 +2,4 @@
 
 #define THE_NETHER
 
-#include "/program/basic.fsh"
+#include "/program/eyes.fsh"

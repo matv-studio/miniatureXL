@@ -1,4 +1,5 @@
 #define SHADOW_DARKNESS 0.5 //[0.0 0.05 0.1 0.15 0.2 0.25 0.3 0.35 0.4 0.45 0.5 0.55 0.6 0.65 0.7 0.75 0.8 0.85 0.9 0.95 1.0]
+#define LIGHT_CONTRAST 0.3 //[0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
 #define LIGHT_BRIGHTNESS 0.9 //[0.0 0.05 0.1 0.15 0.2 0.25 0.3 0.35 0.4 0.45 0.5 0.55 0.6 0.65 0.7 0.75 0.8 0.85 0.9 0.95 1.0 1.05 1.1 1.15 1.2 1.25 1.3 1.35 1.4 1.45 1.5 1.55 1.6 1.65 1.7 1.75 1.8 1.85 1.9 1.95 2.0]
 
 #define ENABLE_FOG
@@ -17,16 +18,44 @@
 #define SSR_BINARY_STEPS 4   //[1 2 3 4 5 6 7 8 9 10]
 
 #define BLOOM
+// HDR scene buffer: light past 1.0 is kept and rolls off toward white
+// (hot cores) instead of clipping per channel. Below 1.0 nothing changes
+#define HDR
+#ifdef HDR
+   #define EMISSIVE_BOOST 1.5
+#else
+   #define EMISSIVE_BOOST 1.0
+#endif
 #define BLOOM_STRENGTH 1.0     //[0.05 0.1 0.15 0.2 0.25 0.3 0.35 0.4 0.45 0.5 0.55 0.6 0.65 0.7 0.75 0.8 0.85 0.9 0.95 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0]
-#define BLOOM_RADIUS 1         //[1 2 3 4 5 6 7 8 9 10]
+#define BLOOM_HALO_SIZE 1.0    //[0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
 #define BLOOM_QUALITY 1        //[0 1 2]
 #define BLOOM_SATURATION 1.4   //[0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0]
 #define BLOOM_SKY
 #define BLOOM_EMISSIVE_TEXTURES
 #define BLOOM_PARTICLES
-#define BLOOM_ENCHANT
+#define ENCHANT_GLOW 0.0       //[0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
 #define BLOOM_PIXEL_THRESHOLD 0.5 //[0.3 0.35 0.4 0.45 0.5 0.55 0.6 0.65 0.7 0.75 0.8 0.85 0.9]
 #define BLOOM_HIGHLIGHTS 0.55   //[0.0 0.05 0.1 0.15 0.2 0.25 0.3 0.35 0.4 0.45 0.5 0.55 0.6 0.65 0.7 0.75 0.8 0.85 0.9 0.95 1.0]
+// per-category glow strength (Glow > Glow per block). 0 turns that
+// category's glow off; it scales the glow only, never the block's own
+// self-lit texels or the colored light it casts
+#define GLOW_FLAMES 1.0        //[0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
+#define GLOW_SOUL 1.0          //[0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
+#define GLOW_LAVA 1.0          //[0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
+#define GLOW_REDSTONE 1.0      //[0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
+#define GLOW_LAMPS 1.0         //[0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
+#define GLOW_SEA 1.0           //[0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
+#define GLOW_FROGLIGHTS 1.0    //[0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
+#define GLOW_AMETHYST 1.0      //[0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
+#define GLOW_END_ROD 1.0       //[0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
+#define GLOW_PORTALS 1.0       //[0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
+#define GLOW_SCULK 1.0         //[0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
+#define GLOW_STEMS 1.0         //[0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
+#define GLOW_PLANTS 1.0        //[0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
+#define GLOW_BREWING 1.0       //[0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
+#define GLOW_MISC 1.0          //[0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
+#define GLOW_OTHER 1.0         //[0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
+#define GLOW_MOBS 1.0          //[0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
 #define BLOOM_THRESHOLD 0.45    //[0.0 0.05 0.1 0.15 0.2 0.25 0.3 0.35 0.4 0.45 0.5 0.55 0.6 0.65 0.7 0.75 0.8 0.85 0.9 0.95 1.0]
 #define COLORED_LIGHT
 #define COLORED_LIGHT_STRENGTH 2.0 //[0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
@@ -34,7 +63,6 @@
 #define CL_FALLOFF 0.5 //[0.5 0.75 1.0 1.25 1.5 1.75 2.0]
 #define VOXEL_SIZE 128 //[64 128 192 256 384 512]
 #define TORCH_FALLOFF 1.0 //[0.6 0.7 0.8 0.9 1.0 1.15 1.3 1.5 1.75 2.0]
-#define CL_TRANSITION 0.1 //[0.03 0.05 0.1 0.15 0.25 0.5 1.0]
 #define CL_LAVA_TEXTURE
 #define CL_ENTITY_LIGHT
 #define CL_ITEM_LIGHT
@@ -114,7 +142,13 @@
 #else
    #define CL_RANGE_EFF float(COLORED_LIGHT_RANGE)
 #endif
-#define BLOOM_SOURCE_COLOR 1.0 //[0.0 0.05 0.1 0.15 0.2 0.25 0.3 0.35 0.4 0.45 0.5 0.55 0.6 0.65 0.7 0.75 0.8 0.85 0.9 0.95 1.0]
+#define BLOOM_CORE 0.4
+#define BLOOM_HALO_MID 1.0     // wide halo: mip level 2 of the blurred glow
+#define BLOOM_HALO_WIDE 0.6    // wider halo: mip level 4
+#define BLOOM_FACE_HALO 0.1    // halo share on a glowing block's own dark texels
+#define BLOOM_SOURCE_HALO_CUT 0.8 // halo removed from a source's own glowing texels
+#define BLOOM_CORE_HDR 0.2
+#define HDR_SPILL 0.3
 #if BLOOM_QUALITY == 0
    #define BLOOM_DOWNSCALE 4.0
    #define BLOOM_TAPS 4
@@ -145,6 +179,14 @@ const float sunPathRotation = 0.0; //[-90.0 -85.0 -80.0 -75.0 -70.0 -65.0 -60.0 
 
 #define WATER_WAVE_SIZE 1          //[0 1 2 3 4 5 6 7 8 9 10]
 #define WATER_WAVE_SPEED 2         //[1 2 3 4 5 6 7 8 9 10]
+
+// waving foliage and water (common/waving.glsl)
+#define WAVY_LEAVES
+#define WAVY_PLANTS
+#define WAVY_WATER
+#define WAVE_STRENGTH 1.0  //[0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
+#define WAVE_SPEED 1.0     //[0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
+#define WAVE_INDOORS 0.0   //[0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
 #define WATER_BRIGHTNESS 0.4       //[0.0 0.05 0.1 0.15 0.2 0.25 0.3 0.35 0.4 0.45 0.5 0.55 0.6 0.65 0.7 0.75 0.8 0.85 0.9 0.95 1.0]
 #define WATER_B 1.3                //[1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.1 2.2 2.3 2.4 2.5 2.6 2.7 2.8 2.9 3.0]
 #define WATER_A 0.7                //[0.0 0.05 0.1 0.15 0.2 0.25 0.3 0.35 0.4 0.45 0.5 0.55 0.6 0.65 0.7 0.75 0.8 0.85 0.9 0.95 1.0]
@@ -185,6 +227,8 @@ const float sunPathRotation = 0.0; //[-90.0 -85.0 -80.0 -75.0 -70.0 -65.0 -60.0 
 #endif
 #ifdef BLOOM
 #endif
+#ifdef HDR
+#endif
 #ifdef BLOOM_SKY
 #endif
 #ifdef BLOOM_EMISSIVE_TEXTURES
@@ -198,8 +242,6 @@ const float sunPathRotation = 0.0; //[-90.0 -85.0 -80.0 -75.0 -70.0 -65.0 -60.0 
 #ifdef CL_ENTITY_LIGHT
 #endif
 #ifdef CL_ITEM_LIGHT
-#endif
-#ifdef BLOOM_ENCHANT
 #endif
 #ifdef CL_LAVA_TEXTURE
 #endif
@@ -260,3 +302,9 @@ const vec3 SHADOW_COLOR = vec3(1.0 - SHADOW_DARKNESS) + vec3(0.0, 0.3333, 1.0) *
 
 const float SHADOW_MAX_DIST_SQUARED = shadowDistance * shadowDistance;
 const float INV_SHADOW_MAX_DIST_SQUARED = 1.0/SHADOW_MAX_DIST_SQUARED;
+#ifdef WAVY_LEAVES
+#endif
+#ifdef WAVY_PLANTS
+#endif
+#ifdef WAVY_WATER
+#endif

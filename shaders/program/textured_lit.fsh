@@ -44,6 +44,7 @@ varying vec3 gradientFogColor;
    flat varying float bloomCutoff;
    flat varying float bloomLevelCap;
    flat varying vec3 bloomTint;
+   flat varying float glowScale;
 #endif
 
 #if HAND_DYNAMIC_LIGHTING == 0
@@ -64,12 +65,19 @@ varying vec3 gradientFogColor;
    flat varying float lavaRecolor;
 #endif
 
-#ifdef VOXY
-   varying float vanillaMix;
+#ifdef COLORED_LIGHT_ACTIVE
+   varying vec3 lpvNormal;
+#else
+   const vec3 lpvNormal = vec3(0.0);
 #endif
+
+flat varying vec4 emissive;
+flat varying float emissiveHalo;
+flat varying float emissiveGlowGain;
 
 #include "/common/math.glsl"
 #include "/common/transformations.glsl"
+#include "/common/lightPalette.glsl"
 #include "/common/getTorchColor.fsh"
 #include "/common/getAmbientColor.glsl"
 
@@ -92,6 +100,13 @@ void main() {
 
    vec4 albedo = texture2D(gtexture, texUV);
    vec4 color  = color;
+
+   // glowing materials: texels of the material's glow hue (or brightness)
+   // shine at full brightness whatever the lighting, and glow (Photon-like)
+   // judged on the tinted texel at full brightness: redstone wire is a gray
+   // texture tinted red, and directional shading must not change the mask
+   float emissiveMask = getEmissiveMask(
+      albedo.rgb * color.rgb / max(max(color.r, max(color.g, color.b)), 0.05), emissive);
 
    #ifdef GBUFFERS_TERRAIN
       float ambientOcclusion = color.a;
@@ -158,13 +173,7 @@ void main() {
    albedo.rgb = mix(albedo.rgb, entityColor.rgb, entityColor.a);
 
    float albedoLuma = luma(albedo.rgb);
-
-   #ifdef VOXY
-      // plain vanilla reference shading (albedo x AO x lightmap), captured
-      // before any of the pack's ambient/shadow/tint work - what Voxy's LOD
-      // terrain looks like on the other side of the render distance seam
-      vec3 vanillaTerrain = albedo.rgb * ambientOcclusion * texture2D(lightmap, lightUV).rgb;
-   #endif
+   float albedoPeak = max(albedo.r, max(albedo.g, albedo.b)); // unlit, like albedoLuma
 
    #ifdef ENABLE_SHADOWS
       float lightStrength = getLightStrength(diffuse, lightUV.t, feetPos);
@@ -178,7 +187,16 @@ void main() {
       ambient.rgb *= 0.75 + (lightBrightness * lightStrength) * lightColor;
    #endif
 
-   ambient.rgb += getTorchColor(lightUV.s, ambient.rgb, feetPos);
+   ambient.rgb = contrastAmbient(ambient.rgb);
+   ambient.rgb += getTorchColor(lightUV.s, ambient.rgb, feetPos, lpvNormal);
+
+   // fullbright overlay (resource pack emissive layer): Minecraft draws it at
+   // FULL block AND sky light. block light alone is not enough - a face
+   // touching a level-15 source (lantern, glowstone) also reads block 15 and
+   // was taken for an overlay: hue neutralized and glowing, an exposure jump
+   // on that one face. a strong light-volume reading means a real source
+   float overlayLight = rescale(lightUV.s, 0.935, 0.96) * rescale(lightUV.t, 0.935, 0.96)
+                      * (1.0 - rescale(lpvStrengthOut, 0.5, 0.8));
 
    #if defined BLOOM_PASS && defined GBUFFERS_TERRAIN && defined BLOOM_EMISSIVE_TEXTURES
       // resource pack emissive overlays are SELF-lit: they must keep their own
@@ -186,15 +204,39 @@ void main() {
       // quartz sparks turning cyan next to cyan lava). same mask as the
       // overlay glow: fullbright lightmap on a non-emitting block. the ambient
       // is neutralized in hue at identical peak brightness
-      float selfLit = rescale(lightUV.s, 0.935, 0.96) * bloomOverlayOk
+      float selfLit = overlayLight * bloomOverlayOk
                     * float(lightSourceLevel <= 0.12);
 
       ambient.rgb = mix(ambient.rgb, vec3(max(ambient.r, max(ambient.g, ambient.b))), selfLit);
    #endif
 
+   // self-lit emissive texels: never darker than their own glow
+   // only the HOTTEST texels (lightness 0.7+: flame cores, lamp filaments)
+   // are pushed past 1.0 into white-hot; the colored body of a glowing
+   // texture (lava, crimson veins) stays at most fully lit, so it keeps its
+   // color instead of washing out
+   ambient.rgb = max(ambient.rgb, vec3(emissiveMask * emissiveHeat(albedo.rgb)));
+
    albedo.rgb *= ambientOcclusion;
 
    albedo *= ambient;
+
+   // enchantment glint. on MC 26.x Iris draws enchanted items and armor in
+   // ONE pass through gbuffers_entities / gbuffers_hand (inline glint) - the
+   // separate gbuffers_armor_glint pass no longer runs for them, so a pack
+   // that does not sample the glint here shows none. mc_hasGlint() and
+   // mc_sampleGlint() are injected by Iris (stubs returning false / 0 in
+   // every non-glint program). vanilla blends the glint (SRC_COLOR, ONE):
+   // it ADDS glint^2, unlit, after lighting - reproduced exactly
+   vec3 glint = vec3(0.0);
+
+   #ifdef IRIS_INLINE_GLINT
+      if (mc_hasGlint()) {
+         glint = mc_sampleGlint();
+         glint *= glint;
+         albedo.rgb += glint;
+      }
+   #endif
 
    #if defined THE_NETHER && defined NETHER_COLOR_GRADING
       albedo.rgb = mix(
@@ -202,14 +244,6 @@ void main() {
          albedo.rgb,
          max(rescale(luma(ambient.rgb), 0.2, 0.6), rescale(albedoLuma, 0.15, 0.4))
       );
-   #endif
-
-   #ifdef VOXY
-      // seam matching: blend to the vanilla reference near the render
-      // distance so the LOD handoff carries no brightness or hue step,
-      // whatever the time of day (shadows, sun color, sky tints and nether
-      // grading all fade out together)
-      albedo.rgb = mix(albedo.rgb, vanillaTerrain, vanillaMix);
    #endif
 
    albedo.rgb = mix(albedo.rgb, gradientFogColor, fogMix);
@@ -229,21 +263,37 @@ void main() {
 
    gl_FragData[0] = albedo;
 
+   // colortex7.a on the face of a light source or glowing material:
+   // 0.3 + 0.4 x its halo amount (0.3..0.7); 1.0 elsewhere, sky reads 0.
+   // composite.fsh scales the halo it spreads, final.fsh keeps the halo off
+   // the face's own non-glowing texels
+   #ifdef GBUFFERS_TERRAIN
+      float emitterSurfaceMark = (lightSourceLevel > 0.12 || emissive.w > 0.0)
+                               ? 0.3 + 0.4 * emissiveHalo : 1.0;
+   #else
+      float emitterSurfaceMark = 1.0;
+   #endif
+
    #if BLOCK_REFLECTIONS > 0
       float reflectivity = max(0.0, (albedoLuma - blockReflectivity.y) * blockReflectivity.x * 0.2*BLOCK_REFLECTIONS);
 
       gl_FragData[1] = vec4(normal, 1.0);
-      gl_FragData[2] = vec4(reflectivity, blockReflectivity.z, 0.5, 1.0);
+      gl_FragData[2] = vec4(reflectivity, blockReflectivity.z, 0.5, emitterSurfaceMark);
    #else
       gl_FragData[1] = vec4(vec3(0.0), 1.0);
-      gl_FragData[2] = vec4(vec3(0.0), 1.0);
+      gl_FragData[2] = vec4(vec3(0.0), emitterSurfaceMark);
    #endif
 
    #ifdef BLOOM_PASS
       // selective glow: on light-emitting blocks, only the texture's bright
       // (actually emitting) pixels glow - torch flame yes, torch stick no.
       // every source type gets the same strength once its pixels qualify
-      float bloomLevel = lightSourceLevel > 0.12
+      // the emissive model below ADDS to this (max): replacing it lost the
+      // glow of crystals and the brewing stand's rod, whose texels the
+      // tuned luma cutoffs catch better on resource-pack textures
+      // light sources WITHOUT an emissive model only: blocks that have one
+      // glow exactly on its texels (below), never by brightness alone
+      float bloomLevel = lightSourceLevel > 0.12 && emissive.w <= 0.0
          ? smoothe(rescale(albedoLuma, bloomCutoff, bloomCutoff + 0.2))
          : 0.0;
 
@@ -252,13 +302,17 @@ void main() {
          // on non-emitting blocks: a level-15 emitter's own geometry (lantern,
          // campfire) is also rendered fullbright, so the mask cannot separate
          // body from flame there - those use the per-category cutoff above.
-         // bloomOverlayOk excludes Voxy LOD geometry, which is fullbright too
+         // bloomOverlayOk excludes foreign LOD geometry, which is fullbright too
          if (lightSourceLevel <= 0.12 && bloomOverlayOk > 0.25) {
-            float overlayTerm = rescale(lightUV.s, 0.935, 0.96);
+            float overlayTerm = overlayLight;
 
             if (bloomOverlayOk < 0.75) {
-               // entities: only bright emissive pixels (glowing eyes...) qualify
-               overlayTerm *= smoothe(rescale(albedoLuma, 0.5, 0.8));
+               // entities: only vivid emissive pixels (glowing eyes...)
+               // qualify. judged on the brightest CHANNEL, not luma: red
+               // spider eyes or purple enderman eyes (resource-pack
+               // emissive layers drawn fullbright, Fresh Animations/ETF)
+               // have a luma of ~0.3 and never passed a luma test
+               overlayTerm *= smoothe(rescale(albedoPeak, 0.45, 0.75));
             }
 
             bloomLevel = max(bloomLevel, overlayTerm);
@@ -267,8 +321,13 @@ void main() {
 
       #ifdef GLOWING_ORES
          // masked to the bright ore bits only, never the whole block face
-         bloomLevel = max(bloomLevel, isOre * 0.3 * smoothe(rescale(albedoLuma, 0.55, 0.85)));
+         // brightest channel, not luma: lapis blue and redstone red ore
+         // bits have a low luma; gray stone/deepslate stays below 0.6
+         bloomLevel = max(bloomLevel, isOre * 0.3 * smoothe(rescale(albedoPeak, 0.6, 0.9)));
       #endif
+
+      // glowing materials: their emissive texels glow, whatever their luma
+      bloomLevel = max(bloomLevel, min(emissiveMask * emissiveGlowGain, 3.0));
 
       // per-category glow ceiling, applied AFTER every glow path (emitter,
       // overlay, ores) so nothing can max() past it: keeps uniformly bright
@@ -276,15 +335,27 @@ void main() {
       // sensor tendrils
       bloomLevel = min(bloomLevel, bloomLevelCap);
 
+      // Glow per block slider of this block's category (0 = no glow)
+      bloomLevel *= glowScale;
+
       // brightness-normalize the glow color so dark emissive textures (soul fire,
       // sculk, portal...) glow as strongly as bright ones (torch flame)
       vec3 bloomColor = albedo.rgb * min(4.0, max(1.0, 0.5 / max(albedoLuma, 0.001)));
 
       bloomColor *= bloomTint; // per-category hue correction (copper -> green)
 
-      gl_FragData[3] = vec4(
-         clamp(bloomColor, 0.0, 1.0) * (bloomLevel * (1.0 - fogMix) * bloomDistFade),
-         albedo.a
-      );
+      vec3 bloomOut = clamp(bloomColor, 0.0, 1.0) * (bloomLevel * (1.0 - fogMix) * bloomDistFade);
+
+      // the glint glows in its own color and pattern (a resource pack's
+      // purple glint glows purple), brightness-normalized like the rest:
+      // the glint streaks are dim, they would barely register otherwise.
+      // Enchantment glint glow slider: 0 (the default) = no glint glow
+      float glintLuma = luma(glint);
+      vec3 glintGlow = glint * min(4.0, 0.5 / max(glintLuma, 0.001))
+                     * (0.7 * ENCHANT_GLOW * smoothe(rescale(glintLuma, 0.01, 0.12)));
+
+      bloomOut = max(bloomOut, clamp(glintGlow, 0.0, 1.0) * ((1.0 - fogMix) * bloomDistFade));
+
+      gl_FragData[3] = vec4(bloomOut, albedo.a);
    #endif
 }
